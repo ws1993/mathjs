@@ -18,6 +18,11 @@ describe('typeOf', function () {
     assert.strictEqual(math.typeOf(NaN), 'number')
   })
 
+  it('should return bignumber type for a bigint', function () {
+    assert.strictEqual(math.typeOf(42n), 'bigint')
+    assert.strictEqual(math.typeOf(math.bigint('42')), 'bigint')
+  })
+
   it('should return bignumber type for a bignumber', function () {
     assert.strictEqual(math.typeOf(math.bignumber(0.1)), 'BigNumber')
     assert.strictEqual(math.typeOf(new math.BigNumber('0.2')), 'BigNumber')
@@ -47,8 +52,8 @@ describe('typeOf', function () {
   })
 
   it('should return matrix type for a matrix', function () {
-    assert.strictEqual(math.typeOf(math.matrix()), 'Matrix')
-    assert.strictEqual(math.typeOf(math.matrix()), 'Matrix')
+    assert.strictEqual(math.typeOf(math.matrix()), 'DenseMatrix')
+    assert.strictEqual(math.typeOf(math.matrix([], 'sparse')), 'SparseMatrix')
   })
 
   it('should return unit type for a unit', function () {
@@ -80,7 +85,7 @@ describe('typeOf', function () {
 
   it('should return function type for a function', function () {
     function f1 () {}
-    assert.strictEqual(math.typeOf(f1), 'Function')
+    assert.strictEqual(math.typeOf(f1), 'function')
   })
 
   it('should return function type for a chain', function () {
@@ -107,8 +112,10 @@ describe('typeOf', function () {
     assert.strictEqual(math.typeOf(new math.FunctionNode('f', [])), 'FunctionNode')
     assert.strictEqual(math.typeOf(indexNode), 'IndexNode')
     assert.strictEqual(math.typeOf(new math.ObjectNode({})), 'ObjectNode')
+    assert.strictEqual(math.typeOf(math.parse('a+b')), 'OperatorNode')
     assert.strictEqual(math.typeOf(new math.ParenthesisNode(constantNode)), 'ParenthesisNode')
     assert.strictEqual(math.typeOf(new math.RangeNode(constantNode, constantNode)), 'RangeNode')
+    assert.strictEqual(math.typeOf(math.parse('a<b<c')), 'RelationalNode')
     assert.strictEqual(math.typeOf(symbolNode), 'SymbolNode')
   })
 

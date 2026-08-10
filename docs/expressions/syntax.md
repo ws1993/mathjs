@@ -1,6 +1,6 @@
 # Expression syntax
 
-This page describes the syntax of expression parser of math.js. It describes
+This page describes the syntax of the expression parser of math.js. It describes
 how to work with the available data types, functions, operators, variables,
 and more.
 
@@ -24,7 +24,12 @@ the lower level syntax of math.js. Differences are:
   not bitwise xor.
 - Implicit multiplication, like `2 pi`, is supported and has special rules.
 - Relational operators (`<`, `>`, `<=`, `>=`, `==`, and `!=`) are chained, so the expression `5 < x < 10` is equivalent to `5 < x and x < 10`.
-
+- The precedence of some operators is different; see a complete list at the precedence table below.
+- Multi-expression constructs like `a = 1; b = 2; a + b` or
+  `"a = 1;\n cos(a)\n sin(a)"` (where `\n` denotes newline)
+  produce a collection ("ResultSet") of values. Those expressions
+  terminated by `;` are evaluated for side effect only and their values
+  are suppressed from the result.
 
 ## Operators
 
@@ -43,55 +48,62 @@ math.evaluate('2 + 3 * 4')   // 14
 math.evaluate('(2 + 3) * 4') // 20
 ```
 
-The following operators are available:
+The following operators are available. Note that almost every operator listed
+also has a function form with identical meaning that can be used
+interchangeably. For example, `x+y` will always evaluate identically to
+`add(x,y)`. For a full list of the equivalences, see the section on
+Functions below.
 
-Operator    | Name                       | Syntax      | Associativity | Example               | Result
------------ | -------------------------- | ----------  | ------------- | --------------------- | ---------------
-`(`, `)`    | Grouping                   | `(x)`       | None          | `2 * (3 + 4)`         | `14`
-`[`, `]`    | Matrix, Index              | `[...]`     | None          | `[[1,2],[3,4]]`       | `[[1,2],[3,4]]`
-`{`, `}`    | Object                     | `{...}`     | None          | `{a: 1, b: 2}`        | `{a: 1, b: 2}`
-`,`         | Parameter separator        | `x, y`      | Left to right | `max(2, 1, 5)`        | `5`
-`.`         | Property accessor          | `obj.prop`  | Left to right | `obj={a: 12}; obj.a`  | `12`
-`;`         | Statement separator        | `x; y`      | Left to right | `a=2; b=3; a*b`       | `[6]`
-`;`         | Row separator              | `[x; y]`    | Left to right | `[1,2;3,4]`           | `[[1,2],[3,4]]`
-`\n`        | Statement separator        | `x \n y`    | Left to right | `a=2 \n b=3 \n a*b`   | `[2,3,6]`
-`+`         | Add                        | `x + y`     | Left to right | `4 + 5`               | `9`
-`+`         | Unary plus                 | `+y`        | Right to left | `+4`                  | `4`
-`-`         | Subtract                   | `x - y`     | Left to right | `7 - 3`               | `4`
-`-`         | Unary minus                | `-y`        | Right to left | `-4`                  | `-4`
-`*`         | Multiply                   | `x * y`     | Left to right | `2 * 3`               | `6`
-`.*`        | Element-wise multiply      | `x .* y`    | Left to right | `[1,2,3] .* [1,2,3]`  | `[1,4,9]`
-`/`         | Divide                     | `x / y`     | Left to right | `6 / 2`               | `3`
-`./`        | Element-wise divide        | `x ./ y`    | Left to right | `[9,6,4] ./ [3,2,2]`  | `[3,3,2]`
-`%`         | Percentage                 | `x%`        | None          | `8%`                  | `0.08`
-`%`         | Addition with Percentage   | `x + y%`    | Left to right | `100 + 3%`            | `103`
-`%`         | Subtraction with Percentage| `x - y%`    | Left to right | `100 - 3%`            | `97`
-`%` `mod`   | Modulus                    | `x % y`     | Left to right | `8 % 3`               | `2`
-`^`         | Power                      | `x ^ y`     | Right to left | `2 ^ 3`               | `8`
-`.^`        | Element-wise power         | `x .^ y`    | Right to left | `[2,3] .^ [3,3]`      | `[8,27]`
-`'`         | Transpose                  | `y'`        | Left to right | `[[1,2],[3,4]]'`      | `[[1,3],[2,4]]`
-`!`         | Factorial                  | `y!`        | Left to right | `5!`                  | `120`
-`&`         | Bitwise and                | `x & y`     | Left to right | `5 & 3`               | `1`
-`~`         | Bitwise not                | `~x`        | Right to left | `~2`                  | `-3`
-<code>&#124;</code>  | Bitwise or     | <code>x &#124; y</code>   | Left to right | <code>5 &#124; 3</code>  | `7`
-<code>^&#124;</code> | Bitwise xor    | <code>x ^&#124; y</code>  | Left to right | <code>5 ^&#124; 2</code> | `7`
-`<<`        | Left shift                 | `x << y`    | Left to right | `4 << 1`              | `8`
-`>>`        | Right arithmetic shift     | `x >> y`    | Left to right | `8 >> 1`              | `4`
-`>>>`       | Right logical shift        | `x >>> y`   | Left to right | `-8 >>> 1`            | `2147483644`
-`and`       | Logical and                | `x and y`   | Left to right | `true and false`      | `false`
-`not`       | Logical not                | `not y`     | Right to left | `not true`            | `false`
-`or`        | Logical or                 | `x or y`    | Left to right | `true or false`       | `true`
-`xor`       | Logical xor                | `x xor y`   | Left to right | `true xor true`       | `false`
-`=`         | Assignment                 | `x = y`     | Right to left | `a = 5`               | `5`
-`?` `:`     | Conditional expression     | `x ? y : z` | Right to left | `15 > 100 ? 1 : -1`   | `-1`
-`:`         | Range                      | `x : y`     | Right to left | `1:4`                 | `[1,2,3,4]`
-`to`, `in`  | Unit conversion            | `x to y`    | Left to right | `2 inch to cm`        | `5.08 cm`
-`==`        | Equal                      | `x == y`    | Left to right | `2 == 4 - 2`          | `true`
-`!=`        | Unequal                    | `x != y`    | Left to right | `2 != 3`              | `true`
-`<`         | Smaller                    | `x < y`     | Left to right | `2 < 3`               | `true`
-`>`         | Larger                     | `x > y`     | Left to right | `2 > 3`               | `false`
-`<=`        | Smallereq                  | `x <= y`    | Left to right | `4 <= 3`              | `false`
-`>=`        | Largereq                   | `x >= y`    | Left to right | `2 + 4 >= 6`          | `true`
+
+Operator    | Name                        | Syntax      | Associativity | Example               | Result
+----------- |-----------------------------|-------------| ------------- |-----------------------| ---------------
+`(`, `)`    | Grouping                    | `(x)`       | None          | `2 * (3 + 4)`         | `14`
+`[`, `]`    | Matrix, Index               | `[...]`     | None          | `[[1,2],[3,4]]`       | `[[1,2],[3,4]]`
+`{`, `}`    | Object                      | `{...}`     | None          | `{a: 1, b: 2}`        | `{a: 1, b: 2}`
+`,`         | Parameter separator         | `x, y`      | Left to right | `max(2, 1, 5)`        | `5`
+`.`         | Property accessor           | `obj.prop`  | Left to right | `obj={a: 12}; obj.a`  | `12`
+`;`         | Statement separator         | `x; y`      | Left to right | `a=2; b=3; a*b`       | `[6]`
+`;`         | Row separator               | `[x; y]`    | Left to right | `[1,2;3,4]`           | `[[1,2],[3,4]]`
+`\n`        | Statement separator         | `x \n y`    | Left to right | `a=2 \n b=3 \n a*b`   | `[2,3,6]`
+`+`         | Add                         | `x + y`     | Left to right | `4 + 5`               | `9`
+`+`         | Unary plus                  | `+y`        | Right to left | `+4`                  | `4`
+`-`         | Subtract                    | `x - y`     | Left to right | `7 - 3`               | `4`
+`-`         | Unary minus                 | `-y`        | Right to left | `-4`                  | `-4`
+`*`         | Multiply                    | `x * y`     | Left to right | `2 * 3`               | `6`
+`.*`        | Element-wise multiply       | `x .* y`    | Left to right | `[1,2,3] .* [1,2,3]`  | `[1,4,9]`
+`/`         | Divide                      | `x / y`     | Left to right | `6 / 2`               | `3`
+`./`        | Element-wise divide         | `x ./ y`    | Left to right | `[9,6,4] ./ [3,2,2]`  | `[3,3,2]`
+`%`         | Percentage                  | `x%`        | None          | `8%`                  | `0.08`
+`%`         | Addition with Percentage    | `x + y%`    | Left to right | `100 + 3%`            | `103`
+`%`         | Subtraction with Percentage | `x - y%`    | Left to right | `100 - 3%`            | `97`
+`%` `mod`   | Modulus                     | `x % y`     | Left to right | `8 % 3`               | `2`
+`^`         | Power                       | `x ^ y`     | Right to left | `2 ^ 3`               | `8`
+`.^`        | Element-wise power          | `x .^ y`    | Right to left | `[2,3] .^ [3,3]`      | `[8,27]`
+`'`         | Transpose                   | `y'`        | Left to right | `[[1,2],[3,4]]'`      | `[[1,3],[2,4]]`
+`!`         | Factorial                   | `y!`        | Left to right | `5!`                  | `120`
+`&`         | Bitwise and                 | `x & y`     | Left to right | `5 & 3`               | `1`
+`~`         | Bitwise not                 | `~x`        | Right to left | `~2`                  | `-3`
+<code>&#124;</code>  | Bitwise or    | <code>x &#124; y</code> | Left to right | <code>5 &#124; 3</code> | `7`
+<code>^&#124;</code> | Bitwise xor   | <code>x ^&#124; y</code> | Left to right | <code>5 ^&#124; 2</code> | `7`
+`<<`        | Left shift                  | `x << y`    | Left to right | `4 << 1`              | `8`
+`>>`        | Right arithmetic shift      | `x >> y`    | Left to right | `8 >> 1`              | `4`
+`>>>`       | Right logical shift         | `x >>> y`   | Left to right | `-8 >>> 1`            | `2147483644`
+`and`       | Logical and                 | `x and y`   | Left to right | `true and false`      | `false`
+`not`       | Logical not                 | `not y`     | Right to left | `not true`            | `false`
+`or`        | Logical or                  | `x or y`    | Left to right | `true or false`       | `true`
+`xor`       | Logical xor                 | `x xor y`   | Left to right | `true xor true`       | `false`
+`=`         | Assignment                  | `x = y`     | Right to left | `a = 5`               | `5`
+`?` `:`     | Conditional expression      | `x ? y : z` | Right to left | `15 > 100 ? 1 : -1`   | `-1`
+`??`        | Nullish coalescing          | `x ?? y`    | Left to right | `null ?? 2`           | `2`
+`?.`        | Optional chaining accessor  | `obj?.prop` | Left to right | `obj={}; obj?.a`      | `undefined`
+`:`         | Range                       | `x : y`     | Right to left | `1:4`                 | `[1,2,3,4]`
+`to`, `in`  | Unit conversion             | `x to y`    | Left to right | `2 inch to cm`        | `5.08 cm`
+`==`        | Equal                       | `x == y`    | Left to right | `2 == 4 - 2`          | `true`
+`!=`        | Unequal                     | `x != y`    | Left to right | `2 != 3`              | `true`
+`<`         | Smaller                     | `x < y`     | Left to right | `2 < 3`               | `true`
+`>`         | Larger                      | `x > y`     | Left to right | `2 > 3`               | `false`
+`<=`        | Smallereq                   | `x <= y`    | Left to right | `4 <= 3`              | `false`
+`>=`        | Largereq                    | `x >= y`    | Left to right | `2 + 4 >= 6`          | `true`
 
 
 ## Precedence
@@ -104,26 +116,35 @@ Operators                         | Description
 `x(...)`<br>`x[...]`<br>`obj.prop`<br>`:`| Function call<br>Matrix index<br>Property accessor<br>Key/value separator
 `'`                               | Matrix transpose
 `!`                               | Factorial
+`??`                              | Nullish coalescing
 `^`, `.^`                         | Exponentiation
 `+`, `-`, `~`, `not`              | Unary plus, unary minus, bitwise not, logical not
+`%`                               | Unary percentage
 See section below                 | Implicit multiplication
-`*`, `/`, `.*`, `./`, `%`, `mod`  | Multiply, divide, percentage, modulus
+`*`, `/`, `.*`, `./`,`%`, `mod`   | Multiply, divide, modulus
 `+`, `-`                          | Add, subtract
 `:`                               | Range
 `to`, `in`                        | Unit conversion
 `<<`, `>>`, `>>>`                 | Bitwise left shift, bitwise right arithmetic shift, bitwise right logical shift
 `==`, `!=`, `<`, `>`, `<=`, `>=`  | Relational
-`&`                               | Bitwise and
+`&`                               | Bitwise and (lazily evaluated)
 <code>^&#124;</code>              | Bitwise xor
-<code>&#124;</code>               | Bitwise or
-`and`                             | Logical and
+<code>&#124;</code>               | Bitwise or (lazily evaluated)
+`and`                             | Logical and (lazily evaluated)
 `xor`                             | Logical xor
-`or`                              | Logical or
+`or`                              | Logical or (lazily evaluated)
 `?`, `:`                          | Conditional expression
 `=`                               | Assignment
 `,`                               | Parameter and column separator
 `;`                               | Row separator
 `\n`, `;`                         | Statement separators
+
+Lazy evaluation is used where logically possible for bitwise and logical
+operators. In the following example, the sub-expression `x` will not even be
+evaluated because it cannot affect the final result:
+```js
+math.evaluate('false and x')        // false, no matter what x equals
+```
 
 
 ## Functions
@@ -138,8 +159,8 @@ math.evaluate('log(10000, 3 + 7)')  // 4
 math.evaluate('sin(pi / 4)')        // 0.7071067811865475
 ```
 
-New functions can be defined using the `function` keyword. Functions can be
-defined with multiple variables. Function assignments are limited: they can
+New functions can be defined by "assigning" an expression to a function call
+with one or more variables. Such function assignments are limited: they can
 only be defined on a single line.
 
 ```js
@@ -153,6 +174,35 @@ parser.evaluate('g(x, y) = x ^ y')
 parser.evaluate('g(2, 3)')  // 8
 ```
 
+Note that these function assignments do _not_ create closures; put another way,
+all free variables in mathjs are dynamic:
+
+```js
+const parser = math.parser()
+
+parser.evaluate('x = 7')
+parser.evaluate('h(y) = x + y')
+parser.evaluate('h(3)')         // 10
+parser.evaluate('x = 3')
+parser.evaluate('h(3)')         // 6, *not* 10
+```
+
+It is however possible to pass functions as parameters:
+
+```js
+const parser = math.parser()
+
+parser.evaluate('twice(func, x) = func(func(x))')
+parser.evaluate('twice(square, 2)')    // 16
+parser.evaluate('f(x) = 3*x')
+parser.evaluate('twice(f, 2)')         // 18
+
+// a simplistic "numerical derivative":
+parser.evaluate('eps = 1e-10')
+parser.evaluate('nd(f, x) = (f(x+eps) - func(x-eps))/(2*eps)')
+parser.evaluate('nd(square,2)')        // 4.000000330961484
+```
+
 Math.js itself heavily uses typed functions, which ensure correct inputs and
 throws meaningful errors when the input arguments are invalid. One can create
 a [typed-function](https://github.com/josdejong/typed-function) in the
@@ -164,6 +214,129 @@ const parser = math.parser()
 parser.evaluate('f = typed({"number": f(x) = x ^ 2 - 5})')
 ```
 
+Finally, as mentioned above, there is a function form for nearly every one of
+the mathematical operator symbols. Moreover, for some associative operators,
+the corresponding function allows arbitrarily many arguments. The table below
+gives the full correspondence.
+
+Operator Expression  | Equivalent Function Expression
+---------------------|-------------------------------
+`a or b`             |`or(a,b)`
+`a xor b`            |`xor(a,b)`
+`a and b`            |`and(a,b)`
+`a \| b`             |`bitOr(a,b)`
+`a ^\| b`            |`bitXor(a,b)`
+`a & b`              |`bitAnd(a,b)`
+`a ?? b`             |`nullish(a,b)`
+`a == b`             |`equal(a,b)`
+`a != b`             |`unequal(a,b)`
+`a < b`              |`smaller(a,b)`
+`a > b`              |`larger(a,b)`
+`a <= b`             |`smallerEq(a,b)`
+`a << 3`             |`leftShift(a,3)`
+`a >> 3`             |`rightArithShift(a,3)`
+`a >>> 3`            |`rightLogShift(a,3)`
+`u to cm`            |`to(u, cm)`
+`a + b + c + ...`    |`add(a,b,c,...)`
+`a - b`              |`subtract(a,b)`
+`a * b * c * ...`    |`multiply(a,b,c,...)`
+`A .* B`             |`dotMultiply(A,B)`
+`A ./ B`             |`dotDivide(A,B)`
+`a mod b`            |`mod(a,b)`
+`+a`                 |`unaryPlus(a)`
+`-a`                 |`unaryMinus(a)`
+`~a`                 |`bitNot(a)`
+`not a`              |`not(a)`
+`a^b`                |`pow(a,b)`
+`A .^ B`             |`dotPow(A,B)`
+`a!`                 |`factorial(a)`
+`A'`                 |`ctranspose(A)`
+
+Note that math.js embodies a preference for the operator forms, in that calling
+`simplify` (see [Algebra](./algebra.md)) converts any instances of the function
+form into the corresponding operator.
+
+## Methods
+
+Some data types have methods which can be used in the parser using the dot notation, for example:
+
+```js
+const parser = math.parser()
+
+parser.evaluate('a = 1 m') // Unit 1 m
+parser.evaluate('a.toNumber("mm")') // 1000
+```
+
+Or a method on a Matrix or Array:
+
+```js
+const parser = math.parser()
+
+parser.evaluate('M = [4, 9, 25]') // Matrix [4, 9, 25]
+parser.evaluate('M.map(sqrt)')    // Matrix [2, 3, 5]
+```
+
+## Map and forEach
+
+The `map` and `forEach` functions can be used to apply a callback function to each element of an array or matrix.
+
+The callback functions can be functions, typed functions, inline functions (only in the parser) or compiled inline functions (only in the parser).
+
+The callback can have the following inputs:
+- **value**: the current value in the array or matrix.
+- **index**: the index of the current value expressed as an array of numbers.
+- **array**: the array or matrix being iterated.
+
+Below is the syntax for both functions:
+
+### map
+
+The `map` function applies a function to each element of an array and returns a new array with the results.
+
+```js
+const parser = math.parser()
+
+// Define a square function
+parser.evaluate('square(x) = x ^ 2')
+
+// Apply the square function to each element of the array
+parser.evaluate('result = map([1, 2, 3, 4], square)')
+// result: [1, 4, 9, 16]
+
+// Apply an inline function to each element of the array
+parser.evaluate('result = map([1, 2, 3, 4], f(x) = x ^ 2)')
+// result: [1, 4, 9, 16]
+
+// Apply a compiled inline function to each element of the array
+parser.evaluate('result = map([1, 2, 3, 4], x ^ 2)')
+// result: [1, 4, 9, 16]
+```
+
+### forEach
+The `forEach` function applies a function to each element of an array or matrix but does not return a new array. It is useful for executing side effects.
+
+```js
+// Define a function that prints each element
+math.import({consoleLog: x => console.log(x)})
+const parser = math.parser()
+
+// Define a squareConsleLog function
+parser.evaluate('squareConsoleLog(x) = consoleLog(x ^ 2)')
+
+// Apply the squareConsleLog function to each element of the array
+parser.evaluate('forEach([1, 2, 3, 4], squareConsleLog)')
+// Prints: 1, 4, 9, 16
+
+// Apply an inline function to each element of the array
+parser.evaluate('forEach([1, 2, 3, 4], f(x) = consoleLog(x ^ 2))')
+// Prints: 1, 4, 9, 16
+
+// Apply a compiled inline function to each element of the array
+parser.evaluate('forEach([1, 2, 3, 4], consoleLog(x ^ 2))')
+// Prints: 1, 4, 9, 16
+```
+
+These functions are useful for performing element-wise operations on arrays or matrices.
 
 ## Constants and variables
 
@@ -388,19 +561,6 @@ parser.evaluate('i * i')        // Number,  -1
 parser.evaluate('sqrt(-4)')     // Complex, 2i
 ```
 
-Math.js does not automatically convert complex numbers with an imaginary part
-of zero to numbers. They can be converted to a number using the function
-`number`.
-
-```js
-// convert a complex number to a number
-const parser = math.parser()
-parser.evaluate('a = 2 + 3i')   // Complex, 2 + 3i
-parser.evaluate('b = a - 3i')   // Complex, 2 + 0i
-parser.evaluate('number(b)')    // Number,  2
-parser.evaluate('number(a)')    // Error: 2 + i is no valid number
-```
-
 
 ### Units
 
@@ -516,12 +676,17 @@ can be replaced by using indexes. Indexes are enclosed in square brackets, and
 contain a number or a range for each of the matrix dimensions. A range can have
 its start and/or end undefined. When the start is undefined, the range will start
 at 1, when the end is undefined, the range will end at the end of the matrix.
+
 There is a context variable `end` available as well to denote the end of the
-matrix.
+matrix. This variable cannot be used in multiple nested indices. In that case,
+`end` will be resolved as the end of the innermost matrix. To solve this,
+resolving of the nested index needs to be split in two separate operations.
 
 *IMPORTANT: matrix indexes and ranges work differently from the math.js indexes
 in JavaScript: They are one-based with an included upper-bound, similar to most
 math applications.*
+
+*IMPORTANT: The matrix indexing behavior has been changed in mathjs `v15`, see section [Migrate matrix indexing to mathjs v15](#migrate-matrix-indexing-to-mathjs-v15).*
 
 ```js
 parser = math.parser()
@@ -540,9 +705,38 @@ parser.evaluate('d = a * b')              // Matrix, [[19, 22], [43, 50]]
 
 // retrieve a subset of a matrix
 parser.evaluate('d[2, 1]')                // 43
-parser.evaluate('d[2, 1:end]')            // Matrix, [[43, 50]]
+parser.evaluate('d[2, 1:end]')            // Matrix, [43, 50]
 parser.evaluate('c[end - 1 : -1 : 2]')    // Matrix, [8, 7, 6]
 ```
+
+#### Migrate matrix indexing to mathjs v15
+
+With mathjs v15, matrix indexing has changed to be more consistent and predictable. In v14, using a scalar index would sometimes reduce the dimensionality of the result. In v15, if you want to preserve dimensions, use array, matrix, or range indices. If you want a scalar value, use scalar indices.
+
+To maintain the old indexing behavior without need for any code changes, use the configuration option `legacySubset`:
+
+```js
+math.config({ legacySubset: true })
+```
+
+To migrate your code, you'll have to change all matrix indexes from the old index notation to the new index notation. Basically: scalar indexes have to be wrapped in array brackets if you want an array as output. Here some examples:
+
+```js
+parser = math.parser()
+parser.evaluate('m = [1, 2, 3; 4, 5, 6]')
+```
+
+| v14 code                | v15 equivalent code           | Result             |
+|-------------------------|-------------------------------|--------------------|
+| `m[1:2, 2:3]`           | No change needed              | `[[2, 3], [5, 6]]` |
+| `m[2, 2:3]`             | `m[[2], 2:3]`                 | `[[5, 6]]`         |
+| `m[1:2, 3]`             | `m[1:2, [3]]`                 | `[[3], [6]]`       |
+| `m[2, 3]`               | No change needed              | `6`                |
+
+> **Tip:**  
+> If you want to always get a scalar value, use scalar indices.  
+> If you want to preserve dimensions, use array, matrix or range indices.
+
 
 ## Objects
 
@@ -608,6 +802,15 @@ The results can be read from a `ResultSet` via the property `ResultSet.entries`
 which is an `Array`, or by calling `ResultSet.valueOf()`, which returns the
 array with results.
 
+### Empty expressions
+
+The empty string and any expression consisting solely of whitespace denotes the
+value `undefined`. Such an expression can also occur in a multi-expression
+block separated by `;`, in which case it is simply ignored. (In a
+multi-expression block separated by newlines, empty or whitespace-only
+substrings between newlines are absorbed into the separators, and so are not
+expressions at all.) In all other cases, such as one of the clauses of a
+conditional ternary operator, an empty expression is a syntax error.
 
 ## Implicit multiplication
 
@@ -622,7 +825,7 @@ Parentheses are parsed as a function call when there is a symbol or accessor on
 the left hand side, like `sqrt(4)` or `obj.method(4)`. In other cases the
 parentheses are interpreted as an implicit multiplication.
 
-Math.js will always evaluate implicit multiplication before explicit multiplication `*`, so that the expression `x * y z` is parsed as `x * (y * z)`. Math.js also gives implicit multiplication higher precedence than division, *except* when the division matches the pattern `[number] / [number] [symbol]` or `[number] / [number] [left paren]`. In that special case, the division is evaluated first:
+Math.js will always evaluate implicit multiplication before explicit multiplication `*`, so that the expression `x * y z` is parsed as `x * (y * z)`. Math.js also gives implicit multiplication higher precedence than division, *except* when the division matches the pattern `[unaryPrefixOp]?[number] / [number] [symbol]` or `[unaryPrefixOp]?[number] / [number] [left paren]`. In that special case, the division is evaluated first:
 
 ```js
 math.evaluate('20 kg / 4 kg')   // 5      Evaluated as (20 kg) / (4 kg)
@@ -632,7 +835,7 @@ math.evaluate('20 / 4 kg')      // 5 kg   Evaluated as (20 / 4) kg
 The behavior of implicit multiplication can be summarized by these operator precedence rules, listed from highest to lowest precedence:
 
 - Function calls: `[symbol] [left paren]`
-- Explicit division `/` when the division matches this pattern: `[number] / [number] [symbol]` or `[number] / [number] [left paren]`
+- Explicit division `/` when the division matches this pattern: `[+-~]?[number] / [+-~]?[number] [symbol]` or `[number] / [number] [left paren]`
 - Implicit multiplication
 - All other division `/` and multiplication `*`
 

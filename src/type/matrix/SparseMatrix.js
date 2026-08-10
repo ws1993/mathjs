@@ -5,6 +5,7 @@ import { clone, deepStrictEqual } from '../../utils/object.js'
 import { arraySize, getArrayDataType, processSizesWildcard, unsqueeze, validateIndex } from '../../utils/array.js'
 import { factory } from '../../utils/factory.js'
 import { DimensionError } from '../../error/DimensionError.js'
+import { optimizeCallback } from '../../utils/optimizeCallback.js'
 
 const name = 'SparseMatrix'
 const dependencies = [
@@ -15,9 +16,27 @@ const dependencies = [
 
 export const createSparseMatrixClass = /* #__PURE__ */ factory(name, dependencies, ({ typed, equalScalar, Matrix }) => {
   /**
-   * Sparse Matrix implementation. This type implements
-   * a [Compressed Column Storage](https://en.wikipedia.org/wiki/Sparse_matrix#Compressed_sparse_column_(CSC_or_CCS))
-   * format for two-dimensional sparse matrices.
+   * Sparse Matrix implementation. This type (currently) implements 2D
+   * matrices only via the format known as
+   * [Compressed Column Storage](https://en.wikipedia.org/wiki/Sparse_matrix#Compressed_sparse_column_(CSC_or_CCS)).
+   *
+   * The structure/invariants of the internal data should be:
+   * 1. _values is an array of the nonzero values in order from top to bottom
+   *    (of each column), left to right.
+   * 2. _index is an array of row numbers, of the same length as and
+   *    corresponding positionally to _values.
+   * 3. _ptr is an array of length one more than the number of columns. For j
+   *    less than the number of columns, the "half-open" span of indices
+   *    _ptr[j] to _ptr[j+1] (i.e. including _ptr[j] if it is less than
+   *    _ptr[j+1], but never including _ptr[j+1]) are the indices in _values
+   *    of the nonzero elements in column j. Note there are no nonzero elements
+   *    in column j exactly when _ptr[j] === _ptr[j+1], and that the final
+   *    entry in _ptr is always exactly the number of nonzero entries in the
+   *    matrix.
+   * 4. _size is a length-2 array consisting of the number of rows followed by
+   *    the number of columns.
+   * 5. _datatype, if set, is the mathjs typeOf value of all entries of the
+   *    SparseMatrix.
    * @class SparseMatrix
    */
   function SparseMatrix (data, datatype) {
@@ -132,7 +151,9 @@ export const createSparseMatrixClass = /* #__PURE__ */ factory(name, dependencie
       while (j < columns)
     }
     // store number of values in ptr
-    matrix._ptr.push(matrix._index.length)
+    while (matrix._ptr.length <= columns) {
+      matrix._ptr.push(matrix._index.length)
+    }
     // size
     matrix._size = [rows, columns]
   }
@@ -149,6 +170,8 @@ export const createSparseMatrixClass = /* #__PURE__ */ factory(name, dependencie
   /**
    * Attach type information
    */
+  Object.defineProperty(SparseMatrix, 'name', { value: 'SparseMatrix' })
+  SparseMatrix.prototype.constructor = SparseMatrix
   SparseMatrix.prototype.type = 'SparseMatrix'
   SparseMatrix.prototype.isSparseMatrix = true
 
@@ -292,12 +315,14 @@ export const createSparseMatrixClass = /* #__PURE__ */ factory(name, dependencie
     const pv = []
 
     // loop rows in resulting matrix
-    rows.forEach(function (i, r) {
+    function rowsCallback (i, r) {
       // update permutation vector
       pv[i] = r[0]
       // mark i in workspace
       w[i] = true
-    })
+    }
+    if (Number.isInteger(rows)) rowsCallback(rows, [0])
+    else rows.forEach(rowsCallback)
 
     // result matrix arrays
     const values = mvalues ? [] : undefined
@@ -305,7 +330,7 @@ export const createSparseMatrixClass = /* #__PURE__ */ factory(name, dependencie
     const ptr = []
 
     // loop columns in result matrix
-    columns.forEach(function (j) {
+    function columnsCallback (j) {
       // update ptr
       ptr.push(index.length)
       // loop values in column j
@@ -320,16 +345,18 @@ export const createSparseMatrixClass = /* #__PURE__ */ factory(name, dependencie
           if (values) { values.push(mvalues[k]) }
         }
       }
-    })
+    }
+    if (Number.isInteger(columns)) columnsCallback(columns)
+    else columns.forEach(columnsCallback)
     // update ptr
     ptr.push(index.length)
 
     // return matrix
     return new SparseMatrix({
-      values: values,
-      index: index,
-      ptr: ptr,
-      size: size,
+      values,
+      index,
+      ptr,
+      size,
       datatype: matrix._datatype
     })
   }
@@ -395,7 +422,7 @@ export const createSparseMatrixClass = /* #__PURE__ */ factory(name, dependencie
       if (iSize.length === 1) {
         // if the replacement index only has 1 dimension, go trough each one and set its value
         const range = index.dimension(0)
-        range.forEach(function (dataIndex, subIndex) {
+        _forEachIndex(range, (dataIndex, subIndex) => {
           validateIndex(dataIndex)
           matrix.set([dataIndex, 0], submatrix[subIndex[0]], defaultValue)
         })
@@ -403,9 +430,9 @@ export const createSparseMatrixClass = /* #__PURE__ */ factory(name, dependencie
         // if the replacement index has 2 dimensions, go through each one and set the value in the correct index
         const firstDimensionRange = index.dimension(0)
         const secondDimensionRange = index.dimension(1)
-        firstDimensionRange.forEach(function (firstDataIndex, firstSubIndex) {
+        _forEachIndex(firstDimensionRange, (firstDataIndex, firstSubIndex) => {
           validateIndex(firstDataIndex)
-          secondDimensionRange.forEach(function (secondDataIndex, secondSubIndex) {
+          _forEachIndex(secondDimensionRange, (secondDataIndex, secondSubIndex) => {
             validateIndex(secondDataIndex)
             matrix.set([firstDataIndex, secondDataIndex], submatrix[firstSubIndex[0]][secondSubIndex[0]], defaultValue)
           })
@@ -413,6 +440,12 @@ export const createSparseMatrixClass = /* #__PURE__ */ factory(name, dependencie
       }
     }
     return matrix
+
+    function _forEachIndex (index, callback) {
+      // iterate cases where index is a Matrix or a Number
+      if (isNumber(index)) callback(index, [0])
+      else index.forEach(callback)
+    }
   }
 
   /**
@@ -507,8 +540,10 @@ export const createSparseMatrixClass = /* #__PURE__ */ factory(name, dependencie
         _remove(k, j, this._values, this._index, this._ptr)
       }
     } else {
-      // insert value @ (i, j)
-      _insert(k, i, j, v, this._values, this._index, this._ptr)
+      if (!eq(v, zero)) {
+        // insert value @ (i, j)
+        _insert(k, i, j, v, this._values, this._index, this._ptr)
+      }
     }
 
     return this
@@ -848,10 +883,11 @@ export const createSparseMatrixClass = /* #__PURE__ */ factory(name, dependencie
     // rows and columns
     const rows = this._size[0]
     const columns = this._size[1]
+    const fastCallback = optimizeCallback(callback, me, 'map')
     // invoke callback
     const invoke = function (v, i, j) {
       // invoke callback
-      return callback(v, [i, j], me)
+      return fastCallback.fn(v, [i, j], me)
     }
     // invoke _map
     return _map(this, 0, rows - 1, 0, columns - 1, invoke, skipZeros)
@@ -882,11 +918,11 @@ export const createSparseMatrixClass = /* #__PURE__ */ factory(name, dependencie
     // invoke callback
     const invoke = function (v, x, y) {
       // invoke callback
-      v = callback(v, x, y)
+      const value = callback(v, x, y)
       // check value != 0
-      if (!eq(v, zero)) {
+      if (!eq(value, zero)) {
         // store value
-        values.push(v)
+        values.push(value)
         // index
         index.push(x)
       }
@@ -931,9 +967,9 @@ export const createSparseMatrixClass = /* #__PURE__ */ factory(name, dependencie
     ptr.push(values.length)
     // return sparse matrix
     return new SparseMatrix({
-      values: values,
-      index: index,
-      ptr: ptr,
+      values,
+      index,
+      ptr,
       size: [maxRow - minRow + 1, maxColumn - minColumn + 1]
     })
   }
@@ -956,6 +992,7 @@ export const createSparseMatrixClass = /* #__PURE__ */ factory(name, dependencie
     // rows and columns
     const rows = this._size[0]
     const columns = this._size[1]
+    const fastCallback = optimizeCallback(callback, me, 'forEach')
     // loop columns
     for (let j = 0; j < columns; j++) {
       // k0 <= k < k1 where k0 = _ptr[j] && k1 = _ptr[j+1]
@@ -969,7 +1006,8 @@ export const createSparseMatrixClass = /* #__PURE__ */ factory(name, dependencie
           const i = this._index[k]
 
           // value @ k
-          callback(this._values[k], [i, j], me)
+          // TODO apply a non indexed version of algorithm in case fastCallback is not optimized
+          fastCallback.fn(this._values[k], [i, j], me)
         }
       } else {
         // create a cache holding all defined values
@@ -983,7 +1021,7 @@ export const createSparseMatrixClass = /* #__PURE__ */ factory(name, dependencie
         // and either read the value or zero
         for (let i = 0; i < rows; i++) {
           const value = (i in values) ? values[i] : 0
-          callback(value, [i, j], me)
+          fastCallback.fn(value, [i, j], me)
         }
       }
     }
@@ -1179,9 +1217,9 @@ export const createSparseMatrixClass = /* #__PURE__ */ factory(name, dependencie
     ptr.push(values.length)
     // return matrix
     return new SparseMatrix({
-      values: values,
-      index: index,
-      ptr: ptr,
+      values,
+      index,
+      ptr,
       size: [n, 1]
     })
   }
@@ -1327,9 +1365,9 @@ export const createSparseMatrixClass = /* #__PURE__ */ factory(name, dependencie
     ptr.push(values.length)
     // create SparseMatrix
     return new SparseMatrix({
-      values: values,
-      index: index,
-      ptr: ptr,
+      values,
+      index,
+      ptr,
       size: [rows, columns]
     })
   }
@@ -1375,6 +1413,7 @@ export const createSparseMatrixClass = /* #__PURE__ */ factory(name, dependencie
     // indeces for column j
     const k0 = ptr[j]
     const k1 = ptr[j + 1]
+
     // loop
     for (let k = k0; k < k1; k++) {
       // invoke callback

@@ -1,5 +1,6 @@
 import { factory } from '../../utils/factory.js'
 import { flatten } from '../../utils/array.js'
+import { isComplex } from '../../utils/is.js'
 
 const name = 'hypot'
 const dependencies = [
@@ -15,11 +16,11 @@ const dependencies = [
 
 export const createHypot = /* #__PURE__ */ factory(name, dependencies, ({ typed, abs, addScalar, divideScalar, multiplyScalar, sqrt, smaller, isPositive }) => {
   /**
-   * Calculate the hypotenusa of a list with values. The hypotenusa is defined as:
+   * Calculate the hypotenuse of a list with values. The hypotenuse is defined as:
    *
    *     hypot(a, b, c, ...) = sqrt(a^2 + b^2 + c^2 + ...)
    *
-   * For matrix input, the hypotenusa is calculated for all values in the matrix.
+   * For matrix input, the hypotenuse is calculated for all values in the matrix.
    *
    * Syntax:
    *
@@ -45,17 +46,13 @@ export const createHypot = /* #__PURE__ */ factory(name, dependencies, ({ typed,
   return typed(name, {
     '... number | BigNumber': _hypot,
 
-    Array: function (x) {
-      return this.apply(this, flatten(x))
-    },
+    Array: _hypot,
 
-    Matrix: function (x) {
-      return this.apply(this, flatten(x.toArray()))
-    }
+    Matrix: M => _hypot(flatten(M.toArray(), true))
   })
 
   /**
-   * Calculate the hypotenusa for an Array with values
+   * Calculate the hypotenuse for an Array with values
    * @param {Array.<number | BigNumber>} args
    * @return {number | BigNumber} Returns the result
    * @private
@@ -67,6 +64,9 @@ export const createHypot = /* #__PURE__ */ factory(name, dependencies, ({ typed,
     let largest = 0
 
     for (let i = 0; i < args.length; i++) {
+      if (isComplex(args[i])) {
+        throw new TypeError('Unexpected type of argument to hypot')
+      }
       const value = abs(args[i])
       if (smaller(largest, value)) {
         result = multiplyScalar(result,

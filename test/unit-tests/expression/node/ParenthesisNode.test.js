@@ -18,7 +18,7 @@ describe('ParenthesisNode', function () {
 
   it('should throw an error when calling without new operator', function () {
     const a = new ConstantNode(1)
-    assert.throws(function () { ParenthesisNode(a) }, SyntaxError)
+    assert.throws(function () { ParenthesisNode(a) }, TypeError)
   })
 
   it('should throw an error when calling with wrong arguments', function () {
@@ -163,6 +163,19 @@ describe('ParenthesisNode', function () {
     const n = new math.ParenthesisNode(c)
 
     assert.strictEqual(n.toString({ handler: customFunction }), '[1]')
+  })
+
+  it('should stringify a ParenthesisNode with custom toHTML', function () {
+    const customFunction = function (node, options) {
+      if (node.type === 'ParenthesisNode') {
+        return '[' + node.content.toHTML(options) + ']'
+      }
+    }
+
+    const c = new math.ConstantNode(1)
+    const n = new math.ParenthesisNode(c)
+
+    assert.strictEqual(n.toHTML({ handler: customFunction }), '[<span class="math-number">1</span>]')
   })
 
   it('toJSON and fromJSON', function () {

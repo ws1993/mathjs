@@ -2,7 +2,7 @@
 
 import assert from 'assert'
 import math from '../../../../src/defaultInstance.js'
-import approx from '../../../../tools/approx.js'
+import { approxEqual, approxDeepEqual } from '../../../../tools/approx.js'
 const complex = math.complex
 const matrix = math.matrix
 const unit = math.unit
@@ -18,14 +18,14 @@ describe('sinh', function () {
   })
 
   it('should return the sinh of a number', function () {
-    approx.equal(sinh(-2), -3.62686040784701876766821398280126170488634201232113572130, EPSILON)
-    approx.equal(sinh(-0.5), -0.52109530549374736162242562641149155910592898261148052794, EPSILON)
-    approx.equal(sinh(0), 0, EPSILON)
-    approx.equal(sinh(0.3), 0.304520293447142618958435267005095229098024232680179727377, EPSILON)
-    approx.equal(sinh(0.5), 0.521095305493747361622425626411491559105928982611480527946, EPSILON)
-    approx.equal(sinh(0.8), 0.888105982187623006574717573189756980559709596888150052610, EPSILON)
-    approx.equal(sinh(1), 1.175201193643801456882381850595600815155717981334095870229, EPSILON)
-    approx.equal(sinh(2), 3.626860407847018767668213982801261704886342012321135721309, EPSILON)
+    approxEqual(sinh(-2), -3.62686040784701876766821398280126170488634201232113572130, EPSILON)
+    approxEqual(sinh(-0.5), -0.52109530549374736162242562641149155910592898261148052794, EPSILON)
+    approxEqual(sinh(0), 0, EPSILON)
+    approxEqual(sinh(0.3), 0.304520293447142618958435267005095229098024232680179727377, EPSILON)
+    approxEqual(sinh(0.5), 0.521095305493747361622425626411491559105928982611480527946, EPSILON)
+    approxEqual(sinh(0.8), 0.888105982187623006574717573189756980559709596888150052610, EPSILON)
+    approxEqual(sinh(1), 1.175201193643801456882381850595600815155717981334095870229, EPSILON)
+    approxEqual(sinh(2), 3.626860407847018767668213982801261704886342012321135721309, EPSILON)
   })
 
   if (process.version !== '' && !/v0\.10|v0\.12/.test(process.version)) {
@@ -71,19 +71,13 @@ describe('sinh', function () {
   })
 
   it('should return the sinh of a complex number', function () {
-    approx.deepEqual(sinh(complex('1')), complex(1.1752011936438014, 0), EPSILON)
-    approx.deepEqual(sinh(complex('i')), complex(0, 0.8414709848079), EPSILON)
-    approx.deepEqual(sinh(complex('2 + i')), complex(1.9596010414216, 3.1657785132162), EPSILON)
+    approxDeepEqual(sinh(complex('1')), complex(1.1752011936438014, 0), EPSILON)
+    approxDeepEqual(sinh(complex('i')), complex(0, 0.8414709848079), EPSILON)
+    approxDeepEqual(sinh(complex('2 + i')), complex(1.95960104142160589707, 3.16577851321616814674), EPSILON)
   })
 
-  it('should return the sinh of an angle', function () {
-    approx.equal(sinh(unit('90deg')), 2.3012989023073, EPSILON)
-    approx.equal(sinh(unit('-45deg')), -0.86867096148601, EPSILON)
-
-    assert(math.isBigNumber(sinh(unit(math.bignumber(90), 'deg'))))
-    approx.equal(sinh(unit(math.bignumber(90), 'deg')).toNumber(), 2.3012989023073, EPSILON)
-
-    approx.deepEqual(sinh(unit(complex('2 + i'), 'rad')), complex(1.9596010414216, 3.1657785132162), EPSILON)
+  it('should throw an error on an angle', function () {
+    assert.throws(() => sinh(unit('90deg')), TypeError)
   })
 
   it('should throw an error if called with an invalid unit', function () {
@@ -96,12 +90,14 @@ describe('sinh', function () {
 
   const sinh123 = [1.1752011936438014, 3.626860407847, 10.01787492741]
 
-  it('should return the sinh of each element of an array', function () {
-    approx.deepEqual(sinh([1, 2, 3]), sinh123, EPSILON)
+  it('should not operate on an array', function () {
+    assert.throws(() => sinh([1, 2, 3]), TypeError)
+    approxDeepEqual(math.map([1, 2, 3], sinh), sinh123, EPSILON)
   })
 
-  it('should return the sinh of each element of a matrix', function () {
-    approx.deepEqual(sinh(matrix([1, 2, 3])), matrix(sinh123), EPSILON)
+  it('should not operate on a matrix', function () {
+    assert.throws(() => sinh(matrix([1, 2, 3])), TypeError)
+    approxDeepEqual(math.map(matrix([1, 2, 3]), sinh), matrix(sinh123), EPSILON)
   })
 
   it('should throw an error in case of invalid number of arguments', function () {

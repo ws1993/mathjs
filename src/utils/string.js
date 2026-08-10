@@ -19,6 +19,7 @@ export function endsWith (text, search) {
  * Usage:
  *     math.format(value)
  *     math.format(value, precision)
+ *     math.format(value, options)
  *
  * When value is a function:
  *
@@ -42,13 +43,24 @@ export function endsWith (text, search) {
  *     math.format('hello')            // '"hello"'
  *
  * @param {*} value             Value to be stringified
- * @param {Object | number | Function} [options]  Formatting options. See
- *                                                lib/utils/number:format for a
- *                                                description of the available
- *                                                options.
+ * @param {Object | number | Function} [options]
+ *     Formatting options. See src/utils/number.js:format for a
+ *     description of the available options controlling number output.
+ *     This generic "format" also supports the option property `truncate: NN`
+ *     giving the maximum number NN of characters to return (if there would
+ *     have been more, they are deleted and replaced by an ellipsis).
  * @return {string} str
  */
 export function format (value, options) {
+  const result = _format(value, options)
+  if (options && typeof options === 'object' && 'truncate' in options &&
+      result.length > options.truncate) {
+    return result.substring(0, options.truncate - 3) + '...'
+  }
+  return result
+}
+
+function _format (value, options) {
   if (typeof value === 'number') {
     return formatNumber(value, options)
   }
@@ -62,7 +74,7 @@ export function format (value, options) {
   if (looksLikeFraction(value)) {
     if (!options || options.fraction !== 'decimal') {
       // output as ratio, like '1/3'
-      return (value.s * value.n) + '/' + value.d
+      return `${value.s * value.n}/${value.d}`
     } else {
       // output as decimal, like '0.(3)'
       return value.toString()
@@ -74,7 +86,7 @@ export function format (value, options) {
   }
 
   if (isString(value)) {
-    return '"' + value + '"'
+    return stringify(value)
   }
 
   if (typeof value === 'function') {
@@ -89,7 +101,7 @@ export function format (value, options) {
       return value.toString(options)
     } else {
       const entries = Object.keys(value).map(key => {
-        return '"' + key + '": ' + format(value[key], options)
+        return stringify(key) + ': ' + format(value[key], options)
       })
 
       return '{' + entries.join(', ') + '}'
@@ -110,26 +122,22 @@ export function stringify (value) {
   let escaped = ''
   let i = 0
   while (i < text.length) {
-    let c = text.charAt(i)
-
-    if (c === '\\') {
-      escaped += c
-      i++
-
-      c = text.charAt(i)
-      if (c === '' || '"\\/bfnrtu'.indexOf(c) === -1) {
-        escaped += '\\' // no valid escape character -> escape it
-      }
-      escaped += c
-    } else if (c === '"') {
-      escaped += '\\"'
-    } else {
-      escaped += c
-    }
+    const c = text.charAt(i)
+    escaped += (c in controlCharacters) ? controlCharacters[c] : c
     i++
   }
 
   return '"' + escaped + '"'
+}
+
+const controlCharacters = {
+  '"': '\\"',
+  '\\': '\\\\',
+  '\b': '\\b',
+  '\f': '\\f',
+  '\n': '\\n',
+  '\r': '\\r',
+  '\t': '\\t'
 }
 
 /**
@@ -183,9 +191,9 @@ function formatArray (array, options) {
 function looksLikeFraction (value) {
   return (value &&
       typeof value === 'object' &&
-      typeof value.s === 'number' &&
-      typeof value.n === 'number' &&
-      typeof value.d === 'number') || false
+      typeof value.s === 'bigint' &&
+      typeof value.n === 'bigint' &&
+      typeof value.d === 'bigint') || false
 }
 
 /**

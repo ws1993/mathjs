@@ -10,11 +10,13 @@ import * as allIsFunctions from './is.js'
 import { create } from '../core/create.js'
 import { endsWith } from './string.js'
 
+export const validateTypeOf = allIsFunctions.typeOf
+
 export function validateBundle (expectedBundleStructure, bundle) {
   const originalWarn = console.warn
 
   console.warn = function (...args) {
-    if (args.join(' ').indexOf('is moved to') !== -1 && args.join(' ').indexOf('Please use the new location instead') !== -1) {
+    if (args.join(' ').includes('is moved to') && args.join(' ').includes('Please use the new location instead')) {
       // Ignore warnings like:
       // Warning: math.type.isNumber is moved to math.isNumber in v6.0.0. Please use the new location instead.
       return
@@ -50,11 +52,11 @@ export function validateBundle (expectedBundleStructure, bundle) {
       const expectedType = get(expectedBundleStructure, path) || 'undefined'
 
       // FIXME: ugly to have these special cases
-      if (path.join('.').indexOf('docs.') !== -1) {
+      if (path.join('.').includes('docs.')) {
         // ignore the contents of docs
         return
       }
-      if (path.join('.').indexOf('all.') !== -1) {
+      if (path.join('.').includes('all.')) {
         // ignore the contents of all dependencies
         return
       }
@@ -107,27 +109,33 @@ export function createSnapshotFromFactories (factories) {
     const factory = factories[factoryName]
     const name = factory.fn
     const isTransformFunction = factory.meta && factory.meta.isTransformFunction
-    const isClass = !isLowerCase(name[0]) && (validateTypeOf(math[name]) === 'Function')
+    const isClass = !isLowerCase(name[0]) && (validateTypeOf(math[name]) === 'function')
     const dependenciesName = factory.fn +
       (isTransformFunction ? 'Transform' : '') +
       'Dependencies'
+    const former = factory.meta?.formerly ?? ''
 
-    allFactoryFunctions[factoryName] = 'Function'
+    allFactoryFunctions[factoryName] = 'function'
     allFunctionsConstantsClasses[name] = validateTypeOf(math[name])
+    if (former) {
+      allFunctionsConstantsClasses[former] = allFunctionsConstantsClasses[name]
+    }
     allDependencyCollections[dependenciesName] = 'Object'
 
     if (isTransformFunction) {
-      allTransformFunctions[name] = 'Function'
+      allTransformFunctions[name] = 'function'
+      if (former) allTransformFunctions[former] = 'function'
     }
 
     if (isClass) {
       if (endsWith(name, 'Node')) {
-        allNodeClasses[name] = 'Function'
+        allNodeClasses[name] = 'function'
       } else {
-        allClasses[name] = 'Function'
+        allClasses[name] = 'function'
       }
     } else {
       allFunctionsConstants[name] = validateTypeOf(math[name])
+      if (former) allFunctionsConstants[former] = allFunctionsConstants[name]
     }
   })
 
@@ -142,8 +150,8 @@ export function createSnapshotFromFactories (factories) {
   })
   embeddedDocs = exclude(embeddedDocs, [
     'equalScalar',
-    'apply',
     'addScalar',
+    'subtractScalar',
     'multiplyScalar',
     'print',
     'divideScalar',
@@ -151,6 +159,7 @@ export function createSnapshotFromFactories (factories) {
     'compile',
     'parser',
     'chain',
+    'coulomb',
     'reviver',
     'replacer'
   ])
@@ -158,27 +167,27 @@ export function createSnapshotFromFactories (factories) {
   const allTypeChecks = {}
   Object.keys(allIsFunctions).forEach(name => {
     if (name.indexOf('is') === 0) {
-      allTypeChecks[name] = 'Function'
+      allTypeChecks[name] = 'function'
     }
   })
 
   const allErrorClasses = {
-    ArgumentsError: 'Function',
-    DimensionError: 'Function',
-    IndexError: 'Function'
+    ArgumentsError: 'function',
+    DimensionError: 'function',
+    IndexError: 'function'
   }
 
   const expectedInstanceStructure = {
     ...allFunctionsConstantsClasses,
 
-    on: 'Function',
-    off: 'Function',
-    once: 'Function',
-    emit: 'Function',
-    import: 'Function',
-    config: 'Function',
-    create: 'Function',
-    factory: 'Function',
+    on: 'function',
+    off: 'function',
+    once: 'function',
+    emit: 'function',
+    import: 'function',
+    config: 'function',
+    create: 'function',
+    factory: 'function',
 
     ...allTypeChecks,
     ...allErrorClasses,
@@ -193,7 +202,7 @@ export function createSnapshotFromFactories (factories) {
         ...exclude(allFunctionsConstants, [
           'chain'
         ]),
-        config: 'Function'
+        config: 'function'
       }
     }
   }
@@ -209,9 +218,9 @@ export function createSnapshotFromFactories (factories) {
       'PI',
       'true'
     ]),
-    create: 'Function',
-    config: 'Function',
-    factory: 'Function',
+    create: 'function',
+    config: 'function',
+    factory: 'function',
     _true: 'boolean',
     _false: 'boolean',
     _null: 'null',
@@ -232,37 +241,9 @@ export function createSnapshotFromFactories (factories) {
   }
 }
 
-export function validateTypeOf (x) {
-  if (x && x.type === 'Unit') {
-    return 'Unit'
-  }
-
-  if (x && x.type === 'Complex') {
-    return 'Complex'
-  }
-
-  if (Array.isArray(x)) {
-    return 'Array'
-  }
-
-  if (x === null) {
-    return 'null'
-  }
-
-  if (typeof x === 'function') {
-    return 'Function'
-  }
-
-  if (typeof x === 'object') {
-    return 'Object'
-  }
-
-  return typeof x
-}
-
 function traverse (obj, callback = (value, path) => {}, path = []) {
   // FIXME: ugly to have these special cases
-  if (path.length > 0 && path[0].indexOf('Dependencies') !== -1) {
+  if (path.length > 0 && path[0].includes('Dependencies')) {
     // special case for objects holding a collection of dependencies
     callback(obj, path)
   } else if (validateTypeOf(obj) === 'Array') {

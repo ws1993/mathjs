@@ -29,9 +29,9 @@ Version 3 and older did use `eval` for the compile step. This is not
 directly a security issue but results in a larger possible attack surface.
 
 When running a node.js server, it's good to be aware of the different
-types of security risks. The risk whe running inside a browser may be
-limited though it's good to be aware of [Cross side scripting (XSS)](https://www.wikiwand.com/en/Cross-site_scripting) vulnerabilities. A nice overview of
-security risks of a node.js servers is listed in an article [Node.js security checklist](https://blog.risingstack.com/node-js-security-checklist/) by Gergely Nemeth.
+types of security risks. The risk when running inside a browser may be
+limited, though it's good to be aware of [Cross side scripting (XSS)](https://www.wikiwand.com/en/Cross-site_scripting) vulnerabilities. A nice overview of
+the security risks of node.js servers is listed in the article [Node.js security checklist](https://blog.risingstack.com/node-js-security-checklist/) by Gergely Nemeth.
 
 ### Less vulnerable expression parser
 
@@ -39,9 +39,10 @@ There is a small number of functions which yield the biggest security
 risk in the expression parser:
 
 - `import` and `createUnit` which alter the built-in functionality and
-  allow overriding existing functions and units.
-- `evaluate`, `parse`, `simplify`, and `derivative` which parse arbitrary
-  input into a manipulable expression tree.
+  allow overriding existing functions and units, and `reviver` which parses 
+  values into class instances.
+- `evaluate`, `parse`, `simplify`, `derivative`, and `resolve` which parse 
+  arbitrary input into a manipulable expression tree.
 
 To make the expression parser less vulnerable whilst still supporting
 most functionality, these functions can be disabled:
@@ -53,12 +54,17 @@ const math = create(all)
 const limitedEvaluate = math.evaluate
 
 math.import({
+  // most important (hardly any functional impact)
   'import':     function () { throw new Error('Function import is disabled') },
   'createUnit': function () { throw new Error('Function createUnit is disabled') },
+  'reviver':    function () { throw new Error('Function reviver is disabled') },
+
+  // extra (has functional impact)
   'evaluate':   function () { throw new Error('Function evaluate is disabled') },
   'parse':      function () { throw new Error('Function parse is disabled') },
   'simplify':   function () { throw new Error('Function simplify is disabled') },
-  'derivative': function () { throw new Error('Function derivative is disabled') }
+  'derivative': function () { throw new Error('Function derivative is disabled') },
+  'resolve':    function () { throw new Error('Function resolve is disabled') },
 }, { override: true })
 
 console.log(limitedEvaluate('sqrt(16)'))     // Ok, 4
@@ -71,7 +77,7 @@ console.log(limitedEvaluate('parse("2+3")')) // Error: Function parse is disable
 You found a security vulnerability? Awesome! We hope you don't have bad
 intentions and want to help fix the issue. Please report the
 vulnerability in a private way by contacting one of the maintainers
-via mail or an other private channel. That way we can work together
+via mail or another private channel. That way we can work together
 on a fix before sharing the issue with everybody including the bad guys.
 
 ## Stability risks

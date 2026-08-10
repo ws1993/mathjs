@@ -1,11 +1,12 @@
 import { deepMap } from '../../utils/collection.js'
-import { isInteger as isIntegerNumber } from '../../utils/number.js'
 import { factory } from '../../utils/factory.js'
 
 const name = 'isInteger'
-const dependencies = ['typed']
+const dependencies = ['typed', 'equal']
 
-export const createIsInteger = /* #__PURE__ */ factory(name, dependencies, ({ typed }) => {
+export const createIsInteger = /* #__PURE__ */ factory(name, dependencies, ({
+  typed, equal
+}) => {
   /**
    * Test whether a value is an integer number.
    * The function supports `number`, `BigNumber`, and `Fraction`.
@@ -25,29 +26,25 @@ export const createIsInteger = /* #__PURE__ */ factory(name, dependencies, ({ ty
    *    math.isInteger(math.fraction(4))      // returns true
    *    math.isInteger('3')                   // returns true
    *    math.isInteger([3, 0.5, -2])          // returns [true, false, true]
-   *    math.isInteger(math.complex('2-4i')   // throws an error
+   *    math.isInteger(math.complex('2-4i'))  // throws TypeError
    *
    * See also:
    *
    *    isNumeric, isPositive, isNegative, isZero
    *
-   * @param {number | BigNumber | Fraction | Array | Matrix} x   Value to be tested
+   * @param {number | BigNumber | bigint | Fraction | Array | Matrix} x   Value to be tested
    * @return {boolean}  Returns true when `x` contains a numeric, integer value.
    *                    Throws an error in case of an unknown data type.
    */
   return typed(name, {
-    number: isIntegerNumber, // TODO: what to do with isInteger(add(0.1, 0.2))  ?
+    number: n => Number.isFinite(n) ? equal(n, Math.round(n)) : false,
 
-    BigNumber: function (x) {
-      return x.isInt()
-    },
+    BigNumber: b => b.isFinite() ? equal(b.round(), b) : false,
 
-    Fraction: function (x) {
-      return x.d === 1 && isFinite(x.n)
-    },
+    bigint: b => true,
 
-    'Array | Matrix': function (x) {
-      return deepMap(x, this)
-    }
+    Fraction: r => r.d === 1n,
+
+    'Array | Matrix': typed.referToSelf(self => x => deepMap(x, self))
   })
 })

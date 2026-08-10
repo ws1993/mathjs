@@ -29,7 +29,7 @@ describe('RangeNode', function () {
   it('should throw an error when calling without new operator', function () {
     const start = new ConstantNode(0)
     const end = new ConstantNode(10)
-    assert.throws(function () { RangeNode([start, end]) }, SyntaxError)
+    assert.throws(function () { RangeNode([start, end]) }, TypeError)
   })
 
   it('should throw an error creating a RangeNode with wrong number or type of arguments', function () {
@@ -310,6 +310,27 @@ describe('RangeNode', function () {
     const n = new RangeNode(a, b, c)
 
     assert.strictEqual(n.toString({ handler: customFunction }), 'from const(1, number) to const(2, number) with steps of const(3, number)')
+  })
+
+  it('should stringify a RangeNode with custom toHTML', function () {
+    // Also checks if the custom functions get passed on to the children
+    const customFunction = function (node, options) {
+      if (node.type === 'RangeNode') {
+        return 'from ' + node.start.toHTML(options) +
+          ' to ' + node.end.toHTML(options) +
+          ' with steps of ' + node.step.toHTML(options)
+      } else if (node.type === 'ConstantNode') {
+        return 'const(' + node.value + ', ' + math.typeOf(node.value) + ')'
+      }
+    }
+
+    const a = new ConstantNode(1)
+    const b = new ConstantNode(2)
+    const c = new ConstantNode(3)
+
+    const n = new RangeNode(a, b, c)
+
+    assert.strictEqual(n.toHTML({ handler: customFunction }), 'from const(1, number) to const(2, number) with steps of const(3, number)')
   })
 
   it('should respect the \'all\' parenthesis option', function () {

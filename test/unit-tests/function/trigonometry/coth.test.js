@@ -1,6 +1,6 @@
 import assert from 'assert'
 import math from '../../../../src/defaultInstance.js'
-import approx from '../../../../tools/approx.js'
+import { approxEqual, approxDeepEqual } from '../../../../tools/approx.js'
 const pi = math.pi
 const complex = math.complex
 const matrix = math.matrix
@@ -11,16 +11,16 @@ const biggermath = math.create({ number: 'BigNumber', precision: 21 })
 
 describe('coth', function () {
   it('should return the coth of a boolean', function () {
-    approx.equal(coth(true), 1.3130352854993)
-    approx.equal(coth(false), Number.POSITIVE_INFINITY)
+    approxEqual(coth(true), 1.3130352854993)
+    approxEqual(coth(false), Number.POSITIVE_INFINITY)
   })
 
   it('should return the coth of a number', function () {
-    approx.equal(coth(0), Number.POSITIVE_INFINITY)
-    approx.equal(coth(pi), 1.0037418731973)
-    approx.equal(coth(1), 1.3130352854993)
-    approx.equal(coth(2), 1.0373147207275)
-    approx.equal(coth(3), 1.0049698233137)
+    approxEqual(coth(0), Number.POSITIVE_INFINITY)
+    approxEqual(coth(pi), 1.0037418731973)
+    approxEqual(coth(1), 1.3130352854993)
+    approxEqual(coth(2), 1.0373147207275)
+    approxEqual(coth(3), 1.0049698233137)
   })
 
   it('should return the coth of a bignumber', function () {
@@ -36,19 +36,13 @@ describe('coth', function () {
   })
 
   it('should return the coth of a complex number', function () {
-    approx.deepEqual(coth(complex('1')), complex(1.3130352854993, 0))
-    approx.deepEqual(coth(complex('i')), complex(0, -0.64209261593433))
-    approx.deepEqual(coth(complex('2 + i')), complex(0.98432922645819, -0.032797755533753))
+    approxDeepEqual(coth(complex('1')), complex(1.3130352854993, 0))
+    approxDeepEqual(coth(complex('i')), complex(0, -0.64209261593433))
+    approxDeepEqual(coth(complex('2 + i')), complex(0.98432922645819, -0.032797755533753))
   })
 
-  it('should return the coth of an angle', function () {
-    approx.equal(coth(unit('90deg')), 1.0903314107274)
-    approx.equal(coth(unit('-45deg')), -1.5248686188221)
-
-    assert(math.isBigNumber(coth(unit(math.bignumber(90), 'deg'))))
-    approx.equal(coth(unit(math.bignumber(90), 'deg')).toNumber(), 1.0903314107274)
-
-    approx.deepEqual(coth(math.unit(complex('2 + i'), 'rad')), complex(0.98432922645819, -0.032797755533753))
+  it('should throw an error on an angle', function () {
+    assert.throws(() => coth(unit('90deg')), TypeError)
   })
 
   it('should throw an error if called with an invalid unit', function () {
@@ -61,12 +55,14 @@ describe('coth', function () {
 
   const coth123 = [1.3130352854993, 1.0373147207275, 1.0049698233137]
 
-  it('should return the coth of each element of an array', function () {
-    approx.deepEqual(coth([1, 2, 3]), coth123)
+  it('should not operate on an array', function () {
+    assert.throws(() => coth([1, 2, 3]), TypeError)
+    approxDeepEqual(math.map([1, 2, 3], coth), coth123)
   })
 
-  it('should return the coth of each element of a matrix', function () {
-    approx.deepEqual(coth(matrix([1, 2, 3])), matrix(coth123))
+  it('should not operate on a matrix', function () {
+    assert.throws(() => coth(matrix([1, 2, 3])), TypeError)
+    approxDeepEqual(math.map(matrix([1, 2, 3]), coth), matrix(coth123))
   })
 
   it('should throw an error in case of invalid number of arguments', function () {

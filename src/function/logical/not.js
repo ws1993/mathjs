@@ -27,11 +27,13 @@ export const createNot = /* #__PURE__ */ factory(name, dependencies, ({ typed })
    *
    *    and, or, xor
    *
-   * @param  {number | BigNumber | Complex | Unit | Array | Matrix} x First value to check
+   * @param  {number | BigNumber | bigint | Complex | Unit | Array | Matrix} x First value to check
    * @return {boolean | Array | Matrix}
    *            Returns true when input is a zero or empty value.
    */
   return typed(name, {
+    'null | undefined': () => true,
+
     number: notNumber,
 
     Complex: function (x) {
@@ -42,12 +44,10 @@ export const createNot = /* #__PURE__ */ factory(name, dependencies, ({ typed })
       return x.isZero() || x.isNaN()
     },
 
-    Unit: function (x) {
-      return x.value !== null ? this(x.value) : true
-    },
+    bigint: x => !x,
 
-    'Array | Matrix': function (x) {
-      return deepMap(x, this)
-    }
+    Unit: typed.referToSelf(self => x => typed.find(self, x.valueType())(x.value)),
+
+    'Array | Matrix': typed.referToSelf(self => x => deepMap(x, self))
   })
 })

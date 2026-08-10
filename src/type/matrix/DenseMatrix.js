@@ -1,17 +1,20 @@
+// deno-lint-ignore-file no-this-alias
 import { isArray, isBigNumber, isCollection, isIndex, isMatrix, isNumber, isString, typeOf } from '../../utils/is.js'
-import { arraySize, getArrayDataType, processSizesWildcard, reshape, resize, unsqueeze, validate, validateIndex } from '../../utils/array.js'
+import { arraySize, getArrayDataType, processSizesWildcard, reshape, resize, unsqueeze, validate, validateIndex, broadcastTo, get } from '../../utils/array.js'
 import { format } from '../../utils/string.js'
 import { isInteger } from '../../utils/number.js'
 import { clone, deepStrictEqual } from '../../utils/object.js'
 import { DimensionError } from '../../error/DimensionError.js'
 import { factory } from '../../utils/factory.js'
+import { optimizeCallback } from '../../utils/optimizeCallback.js'
 
 const name = 'DenseMatrix'
 const dependencies = [
-  'Matrix'
+  'Matrix',
+  'config'
 ]
 
-export const createDenseMatrixClass = /* #__PURE__ */ factory(name, dependencies, ({ Matrix }) => {
+export const createDenseMatrixClass = /* #__PURE__ */ factory(name, dependencies, ({ Matrix, config }) => {
   /**
    * Dense Matrix implementation. A regular, dense matrix, supporting multi-dimensional matrices. This is the default matrix type.
    * @class DenseMatrix
@@ -73,6 +76,8 @@ export const createDenseMatrixClass = /* #__PURE__ */ factory(name, dependencies
   /**
    * Attach type information
    */
+  Object.defineProperty(DenseMatrix, 'name', { value: 'DenseMatrix' })
+  DenseMatrix.prototype.constructor = DenseMatrix
   DenseMatrix.prototype.type = 'DenseMatrix'
   DenseMatrix.prototype.isDenseMatrix = true
 
@@ -161,20 +166,7 @@ export const createDenseMatrixClass = /* #__PURE__ */ factory(name, dependencies
    * @return {*} value
    */
   DenseMatrix.prototype.get = function (index) {
-    if (!isArray(index)) { throw new TypeError('Array expected') }
-    if (index.length !== this._size.length) { throw new DimensionError(index.length, this._size.length) }
-
-    // check index
-    for (let x = 0; x < index.length; x++) { validateIndex(index[x], this._size[x]) }
-
-    let data = this._data
-    for (let i = 0, ii = index.length; i < ii; i++) {
-      const indexI = index[i]
-      validateIndex(indexI, data.length)
-      data = data[indexI]
-    }
-
-    return data
+    return get(this._data, index)
   }
 
   /**
@@ -227,7 +219,9 @@ export const createDenseMatrixClass = /* #__PURE__ */ factory(name, dependencies
       throw new TypeError('Invalid index')
     }
 
-    const isScalar = index.isScalar()
+    const isScalar = config.legacySubset
+      ? index.size().every(idx => idx === 1)
+      : index.isScalar()
     if (isScalar) {
       // return a scalar
       return matrix.get(index.min())
@@ -247,37 +241,53 @@ export const createDenseMatrixClass = /* #__PURE__ */ factory(name, dependencies
       }
 
       // retrieve submatrix
-      // TODO: more efficient when creating an empty matrix and setting _data and _size manually
-      return new DenseMatrix(_getSubmatrix(matrix._data, index, size.length, 0), matrix._datatype)
+      const returnMatrix = new DenseMatrix()
+      const submatrix = _getSubmatrix(matrix._data, index)
+      returnMatrix._size = submatrix.size
+      returnMatrix._datatype = matrix._datatype
+      returnMatrix._data = submatrix.data
+      return config.legacySubset ? returnMatrix.reshape(index.size()) : returnMatrix
     }
   }
 
   /**
-   * Recursively get a submatrix of a multi dimensional matrix.
+   * Get a submatrix of a multi dimensional matrix.
    * Index is not checked for correct number or length of dimensions.
    * @memberof DenseMatrix
    * @param {Array} data
    * @param {Index} index
-   * @param {number} dims   Total number of dimensions
-   * @param {number} dim    Current dimension
    * @return {Array} submatrix
    * @private
    */
-  function _getSubmatrix (data, index, dims, dim) {
-    const last = (dim === dims - 1)
-    const range = index.dimension(dim)
+  function _getSubmatrix (data, index) {
+    const maxDepth = index.size().length - 1
+    const size = Array(maxDepth)
+    return { data: getSubmatrixRecursive(data), size: size.filter(x => x !== null) }
 
-    if (last) {
-      return range.map(function (i) {
-        validateIndex(i, data.length)
-        return data[i]
-      }).valueOf()
-    } else {
-      return range.map(function (i) {
-        validateIndex(i, data.length)
-        const child = data[i]
-        return _getSubmatrix(child, index, dims, dim + 1)
-      }).valueOf()
+    function getSubmatrixRecursive (data, depth = 0) {
+      const dims = index.dimension(depth)
+      function _mapIndex (dim, callback) {
+        // applies a callback for when the index is a Number or a Matrix
+        if (isNumber(dim)) return callback(dim)
+        else return dim.map(callback).valueOf()
+      }
+
+      if (isNumber(dims)) {
+        size[depth] = null
+      } else {
+        size[depth] = dims.size()[0]
+      }
+      if (depth < maxDepth) {
+        return _mapIndex(dims, dimIndex => {
+          validateIndex(dimIndex, data.length)
+          return getSubmatrixRecursive(data[dimIndex], depth + 1)
+        })
+      } else {
+        return _mapIndex(dims, dimIndex => {
+          validateIndex(dimIndex, data.length)
+          return data[dimIndex]
+        })
+      }
     }
   }
 
@@ -303,36 +313,48 @@ export const createDenseMatrixClass = /* #__PURE__ */ factory(name, dependencies
     const isScalar = index.isScalar()
 
     // calculate the size of the submatrix, and convert it into an Array if needed
-    let sSize
+    let submatrixSize
     if (isMatrix(submatrix)) {
-      sSize = submatrix.size()
+      submatrixSize = submatrix.size()
       submatrix = submatrix.valueOf()
     } else {
-      sSize = arraySize(submatrix)
+      submatrixSize = arraySize(submatrix)
     }
 
     if (isScalar) {
       // set a scalar
 
       // check whether submatrix is a scalar
-      if (sSize.length !== 0) {
+      if (submatrixSize.length !== 0) {
         throw new TypeError('Scalar expected')
       }
-
       matrix.set(index.min(), submatrix, defaultValue)
     } else {
       // set a submatrix
+
+      // broadcast submatrix
+      if (!deepStrictEqual(submatrixSize, iSize)) {
+        if (submatrixSize.length === 0) {
+          submatrix = broadcastTo([submatrix], iSize)
+        } else {
+          try {
+            submatrix = broadcastTo(submatrix, iSize)
+          } catch (error) {
+          }
+        }
+        submatrixSize = arraySize(submatrix)
+      }
 
       // validate dimensions
       if (iSize.length < matrix._size.length) {
         throw new DimensionError(iSize.length, matrix._size.length, '<')
       }
 
-      if (sSize.length < iSize.length) {
+      if (submatrixSize.length < iSize.length) {
         // calculate number of missing outer dimensions
         let i = 0
         let outer = 0
-        while (iSize[i] === 1 && sSize[i] === 1) {
+        while (iSize[i] === 1 && submatrixSize[i] === 1) {
           i++
         }
         while (iSize[i] === 1) {
@@ -341,12 +363,12 @@ export const createDenseMatrixClass = /* #__PURE__ */ factory(name, dependencies
         }
 
         // unsqueeze both outer and inner dimensions
-        submatrix = unsqueeze(submatrix, iSize.length, outer, sSize)
+        submatrix = unsqueeze(submatrix, iSize.length, outer, submatrixSize)
       }
 
       // check whether the size of the submatrix matches the index size
-      if (!deepStrictEqual(iSize, sSize)) {
-        throw new DimensionError(iSize, sSize, '>')
+      if (!deepStrictEqual(iSize, submatrixSize)) {
+        throw new DimensionError(iSize, submatrixSize, '>')
       }
 
       // enlarge matrix when needed
@@ -356,9 +378,7 @@ export const createDenseMatrixClass = /* #__PURE__ */ factory(name, dependencies
       _fit(matrix, size, defaultValue)
 
       // insert the sub matrix
-      const dims = iSize.length
-      const dim = 0
-      _setSubmatrix(matrix._data, index, submatrix, dims, dim)
+      _setSubmatrix(matrix._data, index, submatrix)
     }
 
     return matrix
@@ -370,24 +390,31 @@ export const createDenseMatrixClass = /* #__PURE__ */ factory(name, dependencies
    * @param {Array} data
    * @param {Index} index
    * @param {Array} submatrix
-   * @param {number} dims   Total number of dimensions
-   * @param {number} dim
    * @private
    */
-  function _setSubmatrix (data, index, submatrix, dims, dim) {
-    const last = (dim === dims - 1)
-    const range = index.dimension(dim)
+  function _setSubmatrix (data, index, submatrix) {
+    const maxDepth = index.size().length - 1
 
-    if (last) {
-      range.forEach(function (dataIndex, subIndex) {
-        validateIndex(dataIndex)
-        data[dataIndex] = submatrix[subIndex[0]]
-      })
-    } else {
-      range.forEach(function (dataIndex, subIndex) {
-        validateIndex(dataIndex)
-        _setSubmatrix(data[dataIndex], index, submatrix[subIndex[0]], dims, dim + 1)
-      })
+    setSubmatrixRecursive(data, submatrix)
+
+    function setSubmatrixRecursive (data, submatrix, depth = 0) {
+      const range = index.dimension(depth)
+      const recursiveCallback = (rangeIndex, i) => {
+        validateIndex(rangeIndex, data.length)
+        setSubmatrixRecursive(data[rangeIndex], submatrix[i[0]], depth + 1)
+      }
+      const finalCallback = (rangeIndex, i) => {
+        validateIndex(rangeIndex, data.length)
+        data[rangeIndex] = submatrix[i[0]]
+      }
+
+      if (depth < maxDepth) {
+        if (isNumber(range)) recursiveCallback(range, [0])
+        else range.forEach(recursiveCallback)
+      } else {
+        if (isNumber(range)) finalCallback(range, [0])
+        else range.forEach(finalCallback)
+      }
     }
   }
 
@@ -529,29 +556,69 @@ export const createDenseMatrixClass = /* #__PURE__ */ factory(name, dependencies
    * @param {Function} callback   The callback function is invoked with three
    *                              parameters: the value of the element, the index
    *                              of the element, and the Matrix being traversed.
+   * @param {boolean} skipZeros   If true, the callback function is invoked only for non-zero entries
+   * @param {boolean} isUnary     If true, the callback function is invoked with one parameter
    *
    * @return {DenseMatrix} matrix
    */
-  DenseMatrix.prototype.map = function (callback) {
-    // matrix instance
+  DenseMatrix.prototype.map = function (callback, skipZeros = false, isUnary = false) {
     const me = this
-    const recurse = function (value, index) {
-      if (isArray(value)) {
-        return value.map(function (child, i) {
-          return recurse(child, index.concat(i))
-        })
-      } else {
-        return callback(value, index, me)
+    const maxDepth = me._size.length - 1
+
+    if (maxDepth < 0) return me.clone()
+
+    const fastCallback = optimizeCallback(callback, me, 'map', isUnary)
+    const fastCallbackFn = fastCallback.fn
+
+    const result = me.create(undefined, me._datatype)
+    result._size = me._size
+    if (isUnary || fastCallback.isUnary) {
+      result._data = iterateUnary(me._data)
+      return result
+    }
+    if (maxDepth === 0) {
+      const inputData = me.valueOf()
+      const data = Array(inputData.length)
+      for (let i = 0; i < inputData.length; i++) {
+        data[i] = fastCallbackFn(inputData[i], [i], me)
       }
+      result._data = data
+      return result
     }
 
-    // determine the new datatype when the original matrix has datatype defined
-    // TODO: should be done in matrix constructor instead
-    const data = recurse(this._data, [])
-    const datatype = this._datatype !== undefined
-      ? getArrayDataType(data, typeOf)
-      : undefined
-    return new DenseMatrix(data, datatype)
+    const index = []
+    result._data = iterate(me._data)
+    return result
+
+    function iterate (data, depth = 0) {
+      const result = Array(data.length)
+      if (depth < maxDepth) {
+        for (let i = 0; i < data.length; i++) {
+          index[depth] = i
+          result[i] = iterate(data[i], depth + 1)
+        }
+      } else {
+        for (let i = 0; i < data.length; i++) {
+          index[depth] = i
+          result[i] = fastCallbackFn(data[i], index.slice(), me)
+        }
+      }
+      return result
+    }
+
+    function iterateUnary (data, depth = 0) {
+      const result = Array(data.length)
+      if (depth < maxDepth) {
+        for (let i = 0; i < data.length; i++) {
+          result[i] = iterateUnary(data[i], depth + 1)
+        }
+      } else {
+        for (let i = 0; i < data.length; i++) {
+          result[i] = fastCallbackFn(data[i])
+        }
+      }
+      return result
+    }
   }
 
   /**
@@ -560,20 +627,55 @@ export const createDenseMatrixClass = /* #__PURE__ */ factory(name, dependencies
    * @param {Function} callback   The callback function is invoked with three
    *                              parameters: the value of the element, the index
    *                              of the element, and the Matrix being traversed.
+   * @param {boolean} skipZeros   If true, the callback function is invoked only for non-zero entries
+   * @param {boolean} isUnary     If true, the callback function is invoked with one parameter
    */
-  DenseMatrix.prototype.forEach = function (callback) {
-    // matrix instance
+  DenseMatrix.prototype.forEach = function (callback, skipZeros = false, isUnary = false) {
     const me = this
-    const recurse = function (value, index) {
-      if (isArray(value)) {
-        value.forEach(function (child, i) {
-          recurse(child, index.concat(i))
-        })
+    const maxDepth = me._size.length - 1
+
+    if (maxDepth < 0) return
+
+    const fastCallback = optimizeCallback(callback, me, 'map', isUnary)
+    const fastCallbackFn = fastCallback.fn
+    if (isUnary || fastCallback.isUnary) {
+      iterateUnary(me._data)
+      return
+    }
+    if (maxDepth === 0) {
+      for (let i = 0; i < me._data.length; i++) {
+        fastCallbackFn(me._data[i], [i], me)
+      }
+      return
+    }
+    const index = []
+    iterate(me._data)
+
+    function iterate (data, depth = 0) {
+      if (depth < maxDepth) {
+        for (let i = 0; i < data.length; i++) {
+          index[depth] = i
+          iterate(data[i], depth + 1)
+        }
       } else {
-        callback(value, index, me)
+        for (let i = 0; i < data.length; i++) {
+          index[depth] = i
+          fastCallbackFn(data[i], index.slice(), me)
+        }
       }
     }
-    recurse(this._data, [])
+
+    function iterateUnary (data, depth = 0) {
+      if (depth < maxDepth) {
+        for (let i = 0; i < data.length; i++) {
+          iterateUnary(data[i], depth + 1)
+        }
+      } else {
+        for (let i = 0; i < data.length; i++) {
+          fastCallbackFn(data[i])
+        }
+      }
+    }
   }
 
   /**
@@ -581,16 +683,38 @@ export const createDenseMatrixClass = /* #__PURE__ */ factory(name, dependencies
    * @return {Iterable<{ value, index: number[] }>}
    */
   DenseMatrix.prototype[Symbol.iterator] = function * () {
-    const recurse = function * (value, index) {
-      if (isArray(value)) {
-        for (let i = 0; i < value.length; i++) {
-          yield * recurse(value[i], index.concat(i))
-        }
-      } else {
-        yield ({ value, index })
+    const maxDepth = this._size.length - 1
+
+    if (maxDepth < 0) {
+      return
+    }
+
+    if (maxDepth === 0) {
+      for (let i = 0; i < this._data.length; i++) {
+        yield ({ value: this._data[i], index: [i] })
+      }
+      return
+    }
+
+    // Multi-dimensional matrix: iterate over all elements
+    const index = Array(maxDepth + 1).fill(0)
+    const totalElements = this._size.reduce((a, b) => a * b, 1)
+
+    for (let count = 0; count < totalElements; count++) {
+      // Traverse to the current element using indices
+      let current = this._data
+      for (let d = 0; d < maxDepth; d++) {
+        current = current[index[d]]
+      }
+      yield { value: current[index[maxDepth]], index: index.slice() }
+
+      // Increment indices for next element
+      for (let d = maxDepth; d >= 0; d--) {
+        index[d]++
+        if (index[d] < this._size[d]) break
+        index[d] = 0
       }
     }
-    yield * recurse(this._data, [])
   }
 
   /**
@@ -730,7 +854,7 @@ export const createDenseMatrixClass = /* #__PURE__ */ factory(name, dependencies
 
     // create DenseMatrix
     return new DenseMatrix({
-      data: data,
+      data,
       size: [n],
       datatype: this._datatype
     })
@@ -848,7 +972,7 @@ export const createDenseMatrixClass = /* #__PURE__ */ factory(name, dependencies
 
     // create DenseMatrix
     return new DenseMatrix({
-      data: data,
+      data,
       size: [rows, columns]
     })
   }
@@ -909,19 +1033,18 @@ export const createDenseMatrixClass = /* #__PURE__ */ factory(name, dependencies
 
   /**
    * Preprocess data, which can be an Array or DenseMatrix with nested Arrays and
-   * Matrices. Replaces all nested Matrices with Arrays
+   * Matrices. Clones all (nested) Arrays, and replaces all nested Matrices with Arrays
    * @memberof DenseMatrix
-   * @param {Array} data
+   * @param {Array | Matrix} data
    * @return {Array} data
    */
   function preprocess (data) {
-    for (let i = 0, ii = data.length; i < ii; i++) {
-      const elem = data[i]
-      if (isArray(elem)) {
-        data[i] = preprocess(elem)
-      } else if (elem && elem.isMatrix === true) {
-        data[i] = preprocess(elem.valueOf())
-      }
+    if (isMatrix(data)) {
+      return preprocess(data.valueOf())
+    }
+
+    if (isArray(data)) {
+      return data.map(preprocess)
     }
 
     return data

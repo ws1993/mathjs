@@ -31,6 +31,9 @@ export const createErf = /* #__PURE__ */ factory(name, dependencies, ({ typed })
    *    math.erf(-0.5)   // returns -0.5204998778130465
    *    math.erf(4)      // returns 0.9999999845827421
    *
+   * See also:
+   *    zeta
+   *
    * @param {number | Array | Matrix} x   A real number
    * @return {number | Array | Matrix}    The erf of `x`
    */
@@ -50,9 +53,7 @@ export const createErf = /* #__PURE__ */ factory(name, dependencies, ({ typed })
       return sign(x) * (1 - erfc3(y))
     },
 
-    'Array | Matrix': function (n) {
-      return deepMap(n, this)
-    }
+    'Array | Matrix': typed.referToSelf(self => n => deepMap(n, self))
 
     // TODO: For complex numbers, use the approximation for the Faddeeva function
     //  from "More Efficient Computation of the Complex Error Function" (AMS)

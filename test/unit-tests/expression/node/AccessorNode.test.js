@@ -10,6 +10,7 @@ const SymbolNode = math.SymbolNode
 const AccessorNode = math.AccessorNode
 const IndexNode = math.IndexNode
 const RangeNode = math.RangeNode
+const ConditionalNode = math.ConditionalNode
 
 describe('AccessorNode', function () {
   it('should create a AccessorNode', function () {
@@ -32,7 +33,7 @@ describe('AccessorNode', function () {
   })
 
   it('should throw an error when calling without new operator', function () {
-    assert.throws(function () { AccessorNode(new Node(), new IndexNode([])) }, SyntaxError)
+    assert.throws(() => AccessorNode(new Node(), new IndexNode([])), TypeError)
   })
 
   it('should get the name of an AccessorNode', function () {
@@ -73,7 +74,28 @@ describe('AccessorNode', function () {
     const scope = {
       a: [[1, 2], [3, 4]]
     }
-    assert.deepStrictEqual(expr.evaluate(scope), [[3, 4]])
+    assert.deepStrictEqual(expr.evaluate(scope), [3, 4])
+  })
+
+  it('should compile a AccessorNode with "end" in an expression', function () {
+    const a = new SymbolNode('a')
+    const index = new IndexNode([
+      new OperatorNode(
+        '-',
+        'subtract',
+        [
+          new SymbolNode('end'),
+          new ConstantNode(2)
+        ]
+      )
+    ])
+    const n = new AccessorNode(a, index)
+    const expr = n.compile()
+
+    const scope = {
+      a: [1, 2, 3, 4]
+    }
+    assert.deepStrictEqual(expr.evaluate(scope), 2)
   })
 
   it('should compile a AccessorNode with a property', function () {
@@ -86,6 +108,32 @@ describe('AccessorNode', function () {
       a: { b: 42 }
     }
     assert.deepStrictEqual(expr.evaluate(scope), 42)
+  })
+
+  it('should compile a AccessorNode with an not existing property and optional chaining', function () {
+    const a = new SymbolNode('a')
+    const index = new IndexNode([new ConstantNode('b')])
+    const n = new AccessorNode(a, index, true)
+    const expr = n.compile()
+
+    const scope = {
+      a: undefined
+    }
+    assert.deepStrictEqual(expr.evaluate(scope), undefined)
+  })
+
+  it('should compile a nested AccessorNode with an not existing property and optional chaining', function () {
+    const a = new SymbolNode('a')
+    const index = new IndexNode([new ConstantNode('b')])
+    const n = new AccessorNode(a, index, true)
+    const index2 = new IndexNode([new ConstantNode('c')])
+    const n2 = new AccessorNode(n, index2, true)
+    const expr = n2.compile()
+
+    const scope = {
+      a: undefined
+    }
+    assert.deepStrictEqual(expr.evaluate(scope), undefined)
   })
 
   it('should throw a one-based index error when out of range (Array)', function () {
@@ -164,7 +212,7 @@ describe('AccessorNode', function () {
     const scope = {
       a: [[1, 2], [3, 4]]
     }
-    assert.deepStrictEqual(expr.evaluate(scope), [[4, 3]])
+    assert.deepStrictEqual(expr.evaluate(scope), [4, 3])
   })
 
   it('should compile a AccessorNode with "end" both as value and in a range', function () {
@@ -182,7 +230,47 @@ describe('AccessorNode', function () {
     const scope = {
       a: [[1, 2], [3, 4]]
     }
-    assert.deepStrictEqual(expr.evaluate(scope), [[3, 4]])
+    assert.deepStrictEqual(expr.evaluate(scope), [3, 4])
+  })
+
+  it('should use the inner context when using "end" in a nested index', function () {
+    // A[B[end]]
+    const node = new AccessorNode(
+      new SymbolNode('A'),
+      new IndexNode([
+        new AccessorNode(
+          new SymbolNode('B'),
+          new IndexNode([
+            new SymbolNode('end')
+          ])
+        )
+      ])
+    )
+
+    // here, end should resolve to the end of B, which is 3 (whilst the end of A is 6)
+    const expr = node.compile()
+    const scope = {
+      A: [4, 5, 6, 7, 8, 9],
+      B: [1, 2, 3]
+    }
+    assert.deepStrictEqual(expr.evaluate(scope), 6)
+  })
+
+  it('should give a proper error message when using "end" inside the index of an object', function () {
+    const obj = new SymbolNode('value')
+    const index = new IndexNode([
+      new SymbolNode('end')
+    ])
+    const n = new AccessorNode(obj, index)
+    const expr = n.compile()
+
+    assert.throws(function () {
+      expr.evaluate({ value: { end: true } })
+    }, /TypeError: Cannot resolve "end": context must be a Matrix, Array, or string but is Object/)
+
+    assert.throws(function () {
+      expr.evaluate({ value: 42 })
+    }, /TypeError: Cannot resolve "end": context must be a Matrix, Array, or string but is number/)
   })
 
   it('should compile a AccessorNode with bignumber setting', function () {
@@ -347,6 +435,16 @@ describe('AccessorNode', function () {
     assert.strictEqual(d.index.dimensions[1], n.index.dimensions[1])
   })
 
+  it('should clone an AccessorNode with optional chaining', function () {
+    const a = new SymbolNode('a')
+    const b = new ConstantNode(2)
+    const c = new ConstantNode(1)
+    const n = new AccessorNode(a, new IndexNode([b, c]), true)
+
+    const d = n.clone()
+    assert.strictEqual(n.dotNotation, d.dotNotation)
+  })
+
   it('should test equality of an Node', function () {
     const a = new SymbolNode('a')
     const b = new SymbolNode('b')
@@ -375,6 +473,9 @@ describe('AccessorNode', function () {
 
     const n2 = new AccessorNode(a, new IndexNode([]))
     assert.strictEqual(n2.toString(), 'a[]')
+
+    const n3 = new AccessorNode(a, new IndexNode([]), true)
+    assert.strictEqual(n3.toString(), 'a?.[]')
   })
 
   it('should stringify an AccessorNode with parentheses', function () {
@@ -385,6 +486,15 @@ describe('AccessorNode', function () {
     assert.strictEqual(bar.toString(), '(a + b)["bar"]')
   })
 
+  it('should stringify an AccessorNode with parentheses and optional chaining', function () {
+    const condition = new ConstantNode(1)
+    const obj1 = new SymbolNode('obj1')
+    const obj2 = new SymbolNode('obj2')
+    const add = new ConditionalNode(condition, obj1, obj2)
+    const bar = new AccessorNode(add, new IndexNode([new ConstantNode('bar')]), true)
+    assert.strictEqual(bar.toString(), '(1 ? obj1 : obj2)?.["bar"]')
+  })
+
   it('should stringify nested AccessorNode', function () {
     const a = new SymbolNode('a')
     const foo = new AccessorNode(a, new IndexNode([new ConstantNode('foo')]))
@@ -392,7 +502,28 @@ describe('AccessorNode', function () {
     assert.strictEqual(bar.toString(), 'a["foo"]["bar"]')
   })
 
-  it('should stringigy an AccessorNode with custom toString', function () {
+  it('should stringify nested AccessorNode using optional chaining', function () {
+    const a = new SymbolNode('a')
+    const foo = new AccessorNode(a, new IndexNode([new ConstantNode('foo')]), true)
+    const bar = new AccessorNode(foo, new IndexNode([new ConstantNode('bar')]), true)
+    assert.strictEqual(bar.toString(), 'a?.["foo"]?.["bar"]')
+  })
+
+  it('should stringify nested AccessorNode with dot-notation', function () {
+    const a = new SymbolNode('a')
+    const foo = new AccessorNode(a, new IndexNode([new ConstantNode('foo')], true))
+    const bar = new AccessorNode(foo, new IndexNode([new ConstantNode('bar')], true))
+    assert.strictEqual(bar.toString(), 'a.foo.bar')
+  })
+
+  it('should stringify nested AccessorNode with dot-notation using optional chaining', function () {
+    const a = new SymbolNode('a')
+    const foo = new AccessorNode(a, new IndexNode([new ConstantNode('foo')], true), true)
+    const bar = new AccessorNode(foo, new IndexNode([new ConstantNode('bar')], true), true)
+    assert.strictEqual(bar.toString(), 'a?.foo?.bar')
+  })
+
+  it('should stringify an AccessorNode with custom toString', function () {
     // Also checks if the custom functions get passed on to the children
     const customFunction = function (node, options) {
       if (node.type === 'AccessorNode') {
@@ -454,6 +585,30 @@ describe('AccessorNode', function () {
     assert.strictEqual(n.toTex({ handler: customFunction }), ' a at const\\left(1, number\\right), const\\left(2, number\\right), ')
   })
 
+  it('should stringify an AccessorNode with custom toHTML', function () {
+    // Also checks if the custom functions get passed on to the children
+    const customFunction = function (node, options) {
+      if (node.type === 'AccessorNode') {
+        let latex = node.object.toHTML(options) + ' at '
+        node.index.dimensions.forEach(function (range) {
+          latex += range.toHTML(options) + ', '
+        })
+
+        return latex
+      } else if (node.type === 'ConstantNode') {
+        return 'const(' + node.value + ', ' + math.typeOf(node.value) + ')'
+      }
+    }
+
+    const a = new SymbolNode('a')
+    const b = new ConstantNode(1)
+    const c = new ConstantNode(2)
+
+    const n = new AccessorNode(a, new IndexNode([b, c]))
+
+    assert.strictEqual(n.toHTML({ handler: customFunction }), '<span class="math-symbol">a</span> at const(1, number), const(2, number), ')
+  })
+
   it('toJSON and fromJSON', function () {
     const a = new SymbolNode('a')
     const b = new ConstantNode(1)
@@ -466,7 +621,8 @@ describe('AccessorNode', function () {
     assert.deepStrictEqual(json, {
       mathjs: 'AccessorNode',
       index: node.index,
-      object: a
+      object: a,
+      optionalChaining: false
     })
 
     const parsed = AccessorNode.fromJSON(json)

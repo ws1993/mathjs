@@ -1,28 +1,18 @@
-import { isConstantNode, isParenthesisNode } from '../../utils/is.js'
+import { isParenthesisNode } from '../../utils/is.js'
+import { isConstantNode, isVariableNode, isNumericNode, isConstantExpression } from './simplify/wildcards.js'
 import { factory } from '../../utils/factory.js'
 import { createUtil } from './simplify/util.js'
-import { createSimplifyConstant } from './simplify/simplifyConstant.js'
 import { hasOwnProperty } from '../../utils/object.js'
 import { createEmptyMap, createMap } from '../../utils/map.js'
 
 const name = 'simplify'
 const dependencies = [
-  'config',
   'typed',
   'parse',
-  'add',
-  'subtract',
-  'multiply',
-  'divide',
-  'pow',
-  'isZero',
   'equal',
   'resolve',
+  'simplifyConstant',
   'simplifyCore',
-  '?fraction',
-  '?bignumber',
-  'mathWithTransform',
-  'matrix',
   'AccessorNode',
   'ArrayNode',
   'ConstantNode',
@@ -31,27 +21,18 @@ const dependencies = [
   'ObjectNode',
   'OperatorNode',
   'ParenthesisNode',
-  'SymbolNode'
+  'SymbolNode',
+  'replacer'
 ]
 
 export const createSimplify = /* #__PURE__ */ factory(name, dependencies, (
   {
-    config,
     typed,
     parse,
-    add,
-    subtract,
-    multiply,
-    divide,
-    pow,
-    isZero,
     equal,
     resolve,
+    simplifyConstant,
     simplifyCore,
-    fraction,
-    bignumber,
-    mathWithTransform,
-    matrix,
     AccessorNode,
     ArrayNode,
     ConstantNode,
@@ -60,26 +41,10 @@ export const createSimplify = /* #__PURE__ */ factory(name, dependencies, (
     ObjectNode,
     OperatorNode,
     ParenthesisNode,
-    SymbolNode
+    SymbolNode,
+    replacer
   }
 ) => {
-  const simplifyConstant = createSimplifyConstant({
-    typed,
-    config,
-    mathWithTransform,
-    matrix,
-    fraction,
-    bignumber,
-    AccessorNode,
-    ArrayNode,
-    ConstantNode,
-    FunctionNode,
-    IndexNode,
-    ObjectNode,
-    OperatorNode,
-    SymbolNode
-  })
-
   const { hasProperty, isCommutative, isAssociative, mergeContext, flatten, unflattenr, unflattenl, createMakeNodeFunction, defaultContext, realContext, positiveContext } =
     createUtil({ FunctionNode, OperatorNode, SymbolNode })
 
@@ -106,12 +71,21 @@ export const createSimplify = /* #__PURE__ */ factory(name, dependencies, (
    * expression is that variables starting with the following characters are
    * interpreted as wildcards:
    *
-   * - 'n' - matches any Node
-   * - 'c' - matches any ConstantNode
-   * - 'v' - matches any Node that is not a ConstantNode
+   * - 'n' - Matches any node [Node]
+   * - 'c' - Matches a constant literal (5 or 3.2) [ConstantNode]
+   * - 'cl' - Matches a constant literal; same as c [ConstantNode]
+   * - 'cd' - Matches a decimal literal (5 or -3.2) [ConstantNode or unaryMinus wrapping a ConstantNode]
+   * - 'ce' - Matches a constant expression (-5 or √3) [Expressions consisting of only ConstantNodes, functions, and operators]
+   * - 'v' - Matches a variable; anything not matched by c (-5 or x) [Node that is not a ConstantNode]
+   * - 'vl' - Matches a variable literal (x or y) [SymbolNode]
+   * - 'vd' - Matches a non-decimal expression; anything not matched by cd (x or √3) [Node that is not a ConstantNode or unaryMinus that is wrapping a ConstantNode]
+   * - 've' - Matches a variable expression; anything not matched by ce (x or 2x) [Expressions that contain a SymbolNode or other non-constant term]
    *
    * The default list of rules is exposed on the function as `simplify.rules`
-   * and can be used as a basis to built a set of custom rules.
+   * and can be used as a basis to built a set of custom rules. Note that since
+   * the `simplifyCore` function is in the default list of rules, by default
+   * simplify will convert any function calls in the expression that have
+   * operator equivalents to their operator forms.
    *
    * To specify a rule as a string, separate the left and right pattern by '->'
    * When specifying a rule as an object, the following keys are meaningful:
@@ -159,13 +133,13 @@ export const createSimplify = /* #__PURE__ */ factory(name, dependencies, (
    *
    * Syntax:
    *
-   *     simplify(expr)
-   *     simplify(expr, rules)
-   *     simplify(expr, rules)
-   *     simplify(expr, rules, scope)
-   *     simplify(expr, rules, scope, options)
-   *     simplify(expr, scope)
-   *     simplify(expr, scope, options)
+   *     math.simplify(expr)
+   *     math.simplify(expr, rules)
+   *     math.simplify(expr, rules)
+   *     math.simplify(expr, rules, scope)
+   *     math.simplify(expr, rules, scope, options)
+   *     math.simplify(expr, scope)
+   *     math.simplify(expr, scope, options)
    *
    * Examples:
    *
@@ -182,106 +156,30 @@ export const createSimplify = /* #__PURE__ */ factory(name, dependencies, (
    *
    * @param {Node | string} expr
    *            The expression to be simplified
-   * @param {Array<{l:string, r: string} | string | function>} [rules]
+   * @param {SimplifyRule[]} [rules]
    *            Optional list with custom rules
+   * @param {Object} [scope] Optional scope with variables
+   * @param {SimplifyOptions} [options] Optional configuration settings
    * @return {Node} Returns the simplified form of `expr`
    */
+  typed.addConversion({ from: 'Object', to: 'Map', convert: createMap })
   const simplify = typed('simplify', {
-    string: function (expr) {
-      return this(parse(expr), this.rules, createEmptyMap(), {})
-    },
-
-    'string, Map | Object': function (expr, scope) {
-      return this(parse(expr), this.rules, scope, {})
-    },
-
-    'string, Map | Object, Object': function (expr, scope, options) {
-      return this(parse(expr), this.rules, scope, options)
-    },
-
-    'string, Array': function (expr, rules) {
-      return this(parse(expr), rules, createEmptyMap(), {})
-    },
-
-    'string, Array, Map | Object': function (expr, rules, scope) {
-      return this(parse(expr), rules, scope, {})
-    },
-
-    'string, Array, Map | Object, Object': function (expr, rules, scope, options) {
-      return this(parse(expr), rules, scope, options)
-    },
-
-    'Node, Map | Object': function (expr, scope) {
-      return this(expr, this.rules, scope, {})
-    },
-
-    'Node, Map | Object, Object': function (expr, scope, options) {
-      return this(expr, this.rules, scope, options)
-    },
-
-    Node: function (expr) {
-      return this(expr, this.rules, createEmptyMap(), {})
-    },
-
-    'Node, Array': function (expr, rules) {
-      return this(expr, rules, createEmptyMap(), {})
-    },
-
-    'Node, Array, Map | Object': function (expr, rules, scope) {
-      return this(expr, rules, scope, {})
-    },
-
-    'Node, Array, Object, Object': function (expr, rules, scope, options) {
-      return this(expr, rules, createMap(scope), options)
-    },
-
-    'Node, Array, Map, Object': function (expr, rules, scope, options) {
-      const debug = options.consoleDebug
-      rules = _buildRules(rules, options.context)
-      let res = resolve(expr, scope)
-      res = removeParens(res)
-      const visited = {}
-      let str = res.toString({ parenthesis: 'all' })
-      while (!visited[str]) {
-        visited[str] = true
-        _lastsym = 0 // counter for placeholder symbols
-        let laststr = str
-        if (debug) console.log('Working on: ', str)
-        for (let i = 0; i < rules.length; i++) {
-          let rulestr = ''
-          if (typeof rules[i] === 'function') {
-            res = rules[i](res, options)
-            if (debug) rulestr = rules[i].name
-          } else {
-            flatten(res, options.context)
-            res = applyRule(res, rules[i], options.context)
-            if (debug) {
-              rulestr = `${rules[i].l.toString()} -> ${rules[i].r.toString()}`
-            }
-          }
-          if (debug) {
-            const newstr = res.toString({ parenthesis: 'all' })
-            if (newstr !== laststr) {
-              console.log('Applying', rulestr, 'produced', newstr)
-              laststr = newstr
-            }
-          }
-          /* Use left-heavy binary tree internally,
-           * since custom rule functions may expect it
-           */
-          unflattenl(res, options.context)
-        }
-        str = res.toString({ parenthesis: 'all' })
-      }
-      return res
-    }
+    Node: _simplify,
+    'Node, Map': (expr, scope) => _simplify(expr, false, scope),
+    'Node, Map, Object':
+      (expr, scope, options) => _simplify(expr, false, scope, options),
+    'Node, Array': _simplify,
+    'Node, Array, Map': _simplify,
+    'Node, Array, Map, Object': _simplify
   })
+  typed.removeConversion({ from: 'Object', to: 'Map', convert: createMap })
+
   simplify.defaultContext = defaultContext
   simplify.realContext = realContext
   simplify.positiveContext = positiveContext
 
   function removeParens (node) {
-    return node.transform(function (node, path, parent) {
+    return node.transform(function (node) {
       return isParenthesisNode(node)
         ? removeParens(node.content)
         : node
@@ -338,15 +236,19 @@ export const createSimplify = /* #__PURE__ */ factory(name, dependencies, (
       assuming: { subtract: { total: true } }
     },
     {
-      s: '-(c*v) -> v * (-c)', // make non-constant terms positive
+      s: 'n-n -> 0', // partial alternative when we can't always subtract
+      assuming: { subtract: { total: false } }
+    },
+    {
+      s: '-(cl*v) -> v * (-cl)', // make non-constant terms positive
       assuming: { multiply: { commutative: true }, subtract: { total: true } }
     },
     {
-      s: '-(c*v) -> (-c) * v', // non-commutative version, part 1
+      s: '-(cl*v) -> (-cl) * v', // non-commutative version, part 1
       assuming: { multiply: { commutative: false }, subtract: { total: true } }
     },
     {
-      s: '-(v*c) -> v * (-c)', // non-commutative version, part 2
+      s: '-(v*cl) -> v * (-cl)', // non-commutative version, part 2
       assuming: { multiply: { commutative: false }, subtract: { total: true } }
     },
     { l: '-(n1/n2)', r: '-n1/n2' },
@@ -370,17 +272,17 @@ export const createSimplify = /* #__PURE__ */ factory(name, dependencies, (
     },
 
     // collect like factors; into a sum, only do this for nonconstants
-    { l: ' v   * ( v   * n1 + n2)', r: 'v^2       * n1 +  v   * n2' },
+    { l: ' vd   * ( vd   * n1 + n2)', r: 'vd^2       * n1 +  vd   * n2' },
     {
-      s: ' v   * (v^n4 * n1 + n2)   ->  v^(1+n4)  * n1 +  v   * n2',
+      s: ' vd   * (vd^n4 * n1 + n2)   ->  vd^(1+n4)  * n1 +  vd   * n2',
       assuming: { divide: { total: true } } // v*1/v = v^(1+-1) needs 1/v
     },
     {
-      s: 'v^n3 * ( v   * n1 + n2)   ->  v^(n3+1)  * n1 + v^n3 * n2',
+      s: 'vd^n3 * ( vd   * n1 + n2)   ->  vd^(n3+1)  * n1 + vd^n3 * n2',
       assuming: { divide: { total: true } }
     },
     {
-      s: 'v^n3 * (v^n4 * n1 + n2)   ->  v^(n3+n4) * n1 + v^n3 * n2',
+      s: 'vd^n3 * (vd^n4 * n1 + n2)   ->  vd^(n3+n4) * n1 + vd^n3 * n2',
       assuming: { divide: { total: true } }
     },
     { l: 'n*n', r: 'n^2' },
@@ -405,17 +307,26 @@ export const createSimplify = /* #__PURE__ */ factory(name, dependencies, (
       assuming: { add: { total: true } } // 2 = 1 + 1 needs to exist
     },
     { l: 'n+-n', r: '0' },
-    { l: 'v*n + v', r: 'v*(n+1)' }, // NOTE: leftmost position is special:
+    { l: 'vd*n + vd', r: 'vd*(n+1)' }, // NOTE: leftmost position is special:
     { l: 'n3*n1 + n3*n2', r: 'n3*(n1+n2)' }, // All sub-monomials tried there.
     { l: 'n3^(-n4)*n1 +   n3  * n2', r: 'n3^(-n4)*(n1 + n3^(n4+1) *n2)' },
     { l: 'n3^(-n4)*n1 + n3^n5 * n2', r: 'n3^(-n4)*(n1 + n3^(n4+n5)*n2)' },
+    // noncommutative additional cases (term collection & factoring)
     {
-      s: 'n*v + v -> (n+1)*v', // noncommutative additional cases
+      s: 'n*vd + vd -> (n+1)*vd',
+      assuming: { multiply: { commutative: false } }
+    },
+    {
+      s: 'vd + n*vd -> (1+n)*vd',
       assuming: { multiply: { commutative: false } }
     },
     {
       s: 'n1*n3 + n2*n3 -> (n1+n2)*n3',
       assuming: { multiply: { commutative: false } }
+    },
+    {
+      s: 'n^n1 * n -> n^(n1+1)',
+      assuming: { divide: { total: true }, multiply: { commutative: false } }
     },
     {
       s: 'n1*n3^(-n4) + n2 * n3    -> (n1 + n2*n3^(n4 +  1))*n3^(-n4)',
@@ -425,12 +336,15 @@ export const createSimplify = /* #__PURE__ */ factory(name, dependencies, (
       s: 'n1*n3^(-n4) + n2 * n3^n5 -> (n1 + n2*n3^(n4 + n5))*n3^(-n4)',
       assuming: { multiply: { commutative: false } }
     },
-    { l: 'n*c + c', r: '(n+1)*c' },
+    { l: 'n*cd + cd', r: '(n+1)*cd' },
     {
-      s: 'c*n + c -> c*(n+1)',
+      s: 'cd*n + cd -> cd*(n+1)',
       assuming: { multiply: { commutative: false } }
     },
-
+    {
+      s: 'cd + cd*n -> cd*(1+n)',
+      assuming: { multiply: { commutative: false } }
+    },
     simplifyConstant, // Second: before returning expressions to "standard form"
 
     // make factors positive (and undo 'make non-constant terms positive')
@@ -445,12 +359,12 @@ export const createSimplify = /* #__PURE__ */ factory(name, dependencies, (
 
     // final ordering of constants
     {
-      s: 'c+v -> v+c',
+      s: 'ce+ve -> ve+ce',
       assuming: { add: { commutative: true } },
       imposeContext: { add: { commutative: false } }
     },
     {
-      s: 'v*c -> c*v',
+      s: 'vd*cd -> cd*vd',
       assuming: { multiply: { commutative: true } },
       imposeContext: { multiply: { commutative: false } }
     },
@@ -458,6 +372,7 @@ export const createSimplify = /* #__PURE__ */ factory(name, dependencies, (
     // undo temporary rules
     // { l: '(-1) * n', r: '-n' }, // #811 added test which proved this is redundant
     { l: 'n+-n1', r: 'n-n1' }, // undo replace 'subtract'
+    { l: 'n+-(n1)', r: 'n-(n1)' },
     {
       s: 'n*(n1^-1) -> n/n1', // undo replace 'divide'; for * commutative
       assuming: { multiply: { commutative: true } } // o.w. / not conventional
@@ -525,15 +440,34 @@ export const createSimplify = /* #__PURE__ */ factory(name, dependencies, (
     }
 
     if (isAssociative(newRule.l, context)) {
+      const nonCommutative = !isCommutative(newRule.l, context)
+      let leftExpandsym
+      // Gen. the LHS placeholder used in this NC-context specific expansion rules
+      if (nonCommutative) leftExpandsym = _getExpandPlaceholderSymbol()
+
       const makeNode = createMakeNodeFunction(newRule.l)
       const expandsym = _getExpandPlaceholderSymbol()
       newRule.expanded = {}
-      newRule.expanded.l = makeNode([newRule.l.clone(), expandsym])
+      newRule.expanded.l = makeNode([newRule.l, expandsym])
       // Push the expandsym into the deepest possible branch.
       // This helps to match the newRule against nodes returned from getSplits() later on.
       flatten(newRule.expanded.l, context)
       unflattenr(newRule.expanded.l, context)
       newRule.expanded.r = makeNode([newRule.r, expandsym])
+
+      // In and for a non-commutative context, attempting with yet additional expansion rules makes
+      // way for more matches cases of multi-arg expressions; such that associative rules (such as
+      // 'n*n -> n^2') can be applied to exprs. such as 'a * b * b' and 'a * b * b * a'.
+      if (nonCommutative) {
+        // 'Non-commutative' 1: LHS (placeholder) only
+        newRule.expandedNC1 = {}
+        newRule.expandedNC1.l = makeNode([leftExpandsym, newRule.l])
+        newRule.expandedNC1.r = makeNode([leftExpandsym, newRule.r])
+        // 'Non-commutative' 2: farmost LHS and RHS placeholders
+        newRule.expandedNC2 = {}
+        newRule.expandedNC2.l = makeNode([leftExpandsym, newRule.expanded.l])
+        newRule.expandedNC2.r = makeNode([leftExpandsym, newRule.expanded.r])
+      }
     }
 
     return newRule
@@ -585,6 +519,47 @@ export const createSimplify = /* #__PURE__ */ factory(name, dependencies, (
   let _lastsym = 0
   function _getExpandPlaceholderSymbol () {
     return new SymbolNode('_p' + _lastsym++)
+  }
+
+  function _simplify (expr, rules, scope = createEmptyMap(), options = {}) {
+    const debug = options.consoleDebug
+    rules = _buildRules(rules || simplify.rules, options.context)
+    let res = resolve(expr, scope)
+    res = removeParens(res)
+    const visited = {}
+    let str = res.toString({ parenthesis: 'all' })
+    while (!visited[str]) {
+      visited[str] = true
+      _lastsym = 0 // counter for placeholder symbols
+      let laststr = str
+      if (debug) console.log('Working on: ', str)
+      for (let i = 0; i < rules.length; i++) {
+        let rulestr = ''
+        if (typeof rules[i] === 'function') {
+          res = rules[i](res, options)
+          if (debug) rulestr = rules[i].name
+        } else {
+          flatten(res, options.context)
+          res = applyRule(res, rules[i], options.context)
+          if (debug) {
+            rulestr = `${rules[i].l.toString()} -> ${rules[i].r.toString()}`
+          }
+        }
+        if (debug) {
+          const newstr = res.toString({ parenthesis: 'all' })
+          if (newstr !== laststr) {
+            console.log('Applying', rulestr, 'produced', newstr)
+            laststr = newstr
+          }
+        }
+        /* Use left-heavy binary tree internally,
+         * since custom rule functions may expect it
+         */
+        unflattenl(res, options.context)
+      }
+      str = res.toString({ parenthesis: 'all' })
+    }
+    return res
   }
 
   function mapRule (nodes, rule, context) {
@@ -693,6 +668,15 @@ export const createSimplify = /* #__PURE__ */ factory(name, dependencies, (
     if (!matches && rule.expanded) {
       repl = rule.expanded.r
       matches = _ruleMatch(rule.expanded.l, res, mergedContext)[0]
+    }
+    // Additional, non-commutative context expansion-rules
+    if (!matches && rule.expandedNC1) {
+      repl = rule.expandedNC1.r
+      matches = _ruleMatch(rule.expandedNC1.l, res, mergedContext)[0]
+      if (!matches) { // Existence of NC1 implies NC2
+        repl = rule.expandedNC2.r
+        matches = _ruleMatch(rule.expandedNC2.l, res, mergedContext)[0]
+      }
     }
 
     if (matches) {
@@ -834,7 +818,7 @@ export const createSimplify = /* #__PURE__ */ factory(name, dependencies, (
     const uniqueSets = []
     const unique = {}
     for (let i = 0; i < sets.length; i++) {
-      const s = JSON.stringify(sets[i])
+      const s = JSON.stringify(sets[i], replacer)
       if (!unique[s]) {
         unique[s] = true
         uniqueSets.push(sets[i])
@@ -917,8 +901,8 @@ export const createSimplify = /* #__PURE__ */ factory(name, dependencies, (
         }
         res = mergeChildMatches(childMatches)
       } else if (node.args.length >= 2 && rule.args.length === 2) { // node is flattened, rule is not
-        // Associative operators/functions can be split in different ways so we check if the rule matches each
-        // them and return their union.
+        // Associative operators/functions can be split in different ways so we check if the rule
+        // matches for each of them and return their union.
         const splits = getSplits(node, context)
         let splitMatches = []
         for (let i = 0; i < splits.length; i++) {
@@ -934,9 +918,8 @@ export const createSimplify = /* #__PURE__ */ factory(name, dependencies, (
       }
     } else if (rule instanceof SymbolNode) {
       // If the rule is a SymbolNode, then it carries a special meaning
-      // according to the first character of the symbol node name.
-      // c.* matches a ConstantNode
-      // n.* matches any node
+      // according to the first one or two characters of the symbol node name.
+      // These meanings are expalined in the documentation for simplify()
       if (rule.name.length === 0) {
         throw new Error('Symbol in rule has 0 length...!?')
       }
@@ -945,29 +928,83 @@ export const createSimplify = /* #__PURE__ */ factory(name, dependencies, (
         if (rule.name !== node.name) {
           return []
         }
-      } else if (rule.name[0] === 'n' || rule.name.substring(0, 2) === '_p') {
-        // rule matches _anything_, so assign this node to the rule.name placeholder
-        // Assign node to the rule.name placeholder.
-        // Our parent will check for matches among placeholders.
-        res[0].placeholders[rule.name] = node
-      } else if (rule.name[0] === 'v') {
-        // rule matches any variable thing (not a ConstantNode)
-        if (!isConstantNode(node)) {
-          res[0].placeholders[rule.name] = node
-        } else {
-          // Mis-match: rule was expecting something other than a ConstantNode
-          return []
-        }
-      } else if (rule.name[0] === 'c') {
-        // rule matches any ConstantNode
-        if (node instanceof ConstantNode) {
-          res[0].placeholders[rule.name] = node
-        } else {
-          // Mis-match: rule was expecting a ConstantNode
-          return []
-        }
       } else {
-        throw new Error('Invalid symbol in rule: ' + rule.name)
+        // wildcards are composed of up to two alphabetic or underscore characters
+        switch (rule.name[1] >= 'a' && rule.name[1] <= 'z' ? rule.name.substring(0, 2) : rule.name[0]) {
+          case 'n':
+          case '_p':
+            // rule matches _anything_, so assign this node to the rule.name placeholder
+            // Assign node to the rule.name placeholder.
+            // Our parent will check for matches among placeholders.
+            res[0].placeholders[rule.name] = node
+            break
+          case 'c':
+          case 'cl':
+            // rule matches a ConstantNode
+            if (isConstantNode(node)) {
+              res[0].placeholders[rule.name] = node
+            } else {
+              // mis-match: rule does not encompass current node
+              return []
+            }
+            break
+          case 'v':
+            // rule matches anything other than a ConstantNode
+            if (!isConstantNode(node)) {
+              res[0].placeholders[rule.name] = node
+            } else {
+              // mis-match: rule does not encompass current node
+              return []
+            }
+            break
+          case 'vl':
+            // rule matches VariableNode
+            if (isVariableNode(node)) {
+              res[0].placeholders[rule.name] = node
+            } else {
+              // mis-match: rule does not encompass current node
+              return []
+            }
+            break
+          case 'cd':
+            // rule matches a ConstantNode or unaryMinus-wrapped ConstantNode
+            if (isNumericNode(node)) {
+              res[0].placeholders[rule.name] = node
+            } else {
+              // mis-match: rule does not encompass current node
+              return []
+            }
+            break
+          case 'vd':
+            // rule matches anything other than a ConstantNode or unaryMinus-wrapped ConstantNode
+            if (!isNumericNode(node)) {
+              res[0].placeholders[rule.name] = node
+            } else {
+              // mis-match: rule does not encompass current node
+              return []
+            }
+            break
+          case 'ce':
+            // rule matches expressions that have a constant value
+            if (isConstantExpression(node)) {
+              res[0].placeholders[rule.name] = node
+            } else {
+              // mis-match: rule does not encompass current node
+              return []
+            }
+            break
+          case 've':
+            // rule matches expressions that do not have a constant value
+            if (!isConstantExpression(node)) {
+              res[0].placeholders[rule.name] = node
+            } else {
+              // mis-match: rule does not encompass current node
+              return []
+            }
+            break
+          default:
+            throw new Error('Invalid symbol in rule: ' + rule.name)
+        }
       }
     } else if (rule instanceof ConstantNode) {
       // Literal constant must match exactly

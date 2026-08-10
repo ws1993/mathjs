@@ -54,7 +54,7 @@ export const createNthRoots = /* #__PURE__ */ factory(name, dependencies, ({ typ
         roots.push(_calculateExactResult[halfPiFactor % 4](r))
         continue
       }
-      roots.push(new Complex({ r: r, phi: (arg + 2 * Math.PI * k) / root }))
+      roots.push(new Complex({ r, phi: (arg + 2 * Math.PI * k) / root }))
     }
     return roots
   }
@@ -63,7 +63,11 @@ export const createNthRoots = /* #__PURE__ */ factory(name, dependencies, ({ typ
    * Calculate the nth roots of a value.
    * An nth root of a positive real number A,
    * is a positive real solution of the equation "x^root = A".
-   * This function returns an array of complex values.
+   * This function returns an array of Complex values.
+   * Note that currently the precision of Complex numbers are limited
+   * to the precision of a 64-bit IEEE floating point, so even if the input
+   * is a BigNumber with greater precision, rounding to 64 bits will occur
+   * in computing the nth roots.
    *
    * Syntax:
    *
@@ -72,24 +76,22 @@ export const createNthRoots = /* #__PURE__ */ factory(name, dependencies, ({ typ
    *
    * Examples:
    *
-   *    math.nthRoots(1)
-   *    // returns [
-   *    //   {re: 1, im: 0},
-   *    //   {re: -1, im: 0}
-   *    // ]
-   *    nthRoots(1, 3)
-   *    // returns [
-   *    //   { re: 1, im: 0 },
-   *    //   { re: -0.4999999999999998, im: 0.8660254037844387 },
-   *    //   { re: -0.5000000000000004, im: -0.8660254037844385 }
-   *    ]
+   *    math.nthRoots(1) // returns [ {re: 1, im: 0}, {re: -1, im: 0} ]
+   *
+   *    math.nthRoots(1, 3)
+   *    // Complex [1, "-0.5+0.866025403784439i", "-0.5-0.866025403784439i"]
    *
    * See also:
    *
    *    nthRoot, pow, sqrt
    *
+   * History:
+   *
+   *    v1.1   Created
+   *
    * @param {number | BigNumber | Fraction | Complex} x Number to be rounded
-   * @return {number | BigNumber | Fraction | Complex}            Rounded value
+   * @param {number} [root=2] Optional root, default value is 2
+   * @return {number | BigNumber | Fraction | Complex} Returns the nth roots
    */
   return typed(name, {
     Complex: function (x) {

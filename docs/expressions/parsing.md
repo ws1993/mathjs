@@ -22,9 +22,19 @@ math.evaluate([expr1, expr2, expr3, ...], scope)
 
 Function `evaluate` accepts a single expression or an array with
 expressions as the first argument and has an optional second argument
-containing a scope with variables and functions. The scope can be a regular
-JavaScript Object, or Map. The scope will be used to resolve symbols, and to write
-assigned variables or function.
+containing a `scope` with variables and functions. The scope can be a regular
+JavaScript `Map` (recommended), a plain JavaScript `object`, or any custom 
+class that implements the `Map` interface with methods `get`, `set`, `keys` 
+and `has`. The scope will be used to resolve symbols, and to write assigned
+variables and functions.
+
+When an `Object` is used as scope, mathjs will internally wrap it in an 
+`ObjectWrappingMap` interface since the internal functions can only use a `Map` 
+interface. In case of custom defined functions like `f(x) = x^2`, the scope 
+will be wrapped in a `PartitionedMap`, which reads and writes the function
+variables (like `x` in this example) from a temporary map, and reads and writes
+other variables from the original scope. The original scope is never copied, it
+is only wrapped around when needed.
 
 The following code demonstrates how to evaluate expressions.
 
@@ -92,7 +102,7 @@ math.parse([expr1, expr2, expr3, ...])
 ```
 
 Function `parse` accepts a single expression or an array with
-expressions as the argument. Function `parse` returns a the root node of the tree,
+expressions as the argument. Function `parse` returns the root node of the tree,
 which can be successively compiled and evaluated:
 
 ```js
@@ -167,7 +177,9 @@ The parser contains the following functions:
 - `get(name)`
   Retrieve a variable or function from the parser's scope.
 - `getAll()`
-  Retrieve a map with all defined a variables from the parser's scope.
+  Retrieve an object with all defined variables in the parser's scope.
+- `getAllAsMap()`
+  Retrieve a map with all defined variables in the parser's scope.
 - `remove(name)`
   Remove a variable or function from the parser's scope.
 - `set(name, value)`
@@ -192,7 +204,7 @@ parser.evaluate('f(x, y) = x^y')        // f(x, y)
 parser.evaluate('f(2, 3)')              // 8
 
 // get and set variables and functions
-const x = parser.get('x')               // x = 7
+const x = parser.get('x')               // x = 3.5
 const f = parser.get('f')               // function
 const g = f(3, 3)                       // g = 27
 parser.set('h', 500)
@@ -222,3 +234,31 @@ Some care is taken to mutate the same object that is passed into mathjs, so they
 For less reliance on this blacklist, scope can also be a `Map`, which allows mathjs expressions to define variables and functions of any name.
 
 For more, see [examples of custom scopes](../../examples/advanced/custom_scope_objects.js).
+
+## Serialization
+
+All mathjs data types can be serialized. A scope containing variables can therefore be safely serialized too. However, in the expression parser it is possible to define functions, like:
+
+```
+f(x) = x^2
+```
+
+Such a custom function cannot be serialized on its own, since it may be bound to other variables in the scope.
+
+A [`Parser`](#parser) can safely serialize all variables and functions evaluated via the expression parser:
+
+```js
+const parser = math.parser()
+
+// evaluate some expressions
+parser.evaluate('w = 2')
+parser.evaluate('f(x) = x^w')
+parser.evaluate('c = f(3)') // 9
+
+// serialize the parser with its state
+const str = JSON.stringify(parser)
+
+// deserialize the parser again
+const parser2 = JSON.parse(str, math.reviver)
+parser.evaluate('f(4)') // 16
+```

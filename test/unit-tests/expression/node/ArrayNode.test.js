@@ -25,7 +25,7 @@ describe('ArrayNode', function () {
   })
 
   it('should throw an error when calling without new operator', function () {
-    assert.throws(function () { ArrayNode() }, SyntaxError)
+    assert.throws(function () { ArrayNode() }, TypeError)
   })
 
   it('should throw an error on wrong constructor arguments', function () {
@@ -354,5 +354,29 @@ describe('ArrayNode', function () {
     const n = new ArrayNode([a, b])
 
     assert.strictEqual(n.toTex({ handler: customFunction }), '\\left[const\\left(1, number\\right), const\\left(2, number\\right), \\right]')
+  })
+
+  it('should stringify an ArrayNode with custom toHTML', function () {
+    // Also checks if the custom functions get passed on to the children
+    const customFunction = function (node, options) {
+      if (node.type === 'ArrayNode') {
+        let latex = '['
+        node.items.forEach(function (item) {
+          latex += item.toHTML(options) + ', '
+        })
+
+        latex += ']'
+        return latex
+      } else if (node.type === 'ConstantNode') {
+        return 'const(' + node.value + ', ' + math.typeOf(node.value) + ')'
+      }
+    }
+
+    const a = new ConstantNode(1)
+    const b = new ConstantNode(2)
+
+    const n = new ArrayNode([a, b])
+
+    assert.strictEqual(n.toHTML({ handler: customFunction }), '[const(1, number), const(2, number), ]')
   })
 })

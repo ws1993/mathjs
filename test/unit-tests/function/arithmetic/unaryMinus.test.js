@@ -13,6 +13,7 @@ describe('unaryMinus', function () {
   })
 
   // TODO: unary minus should return bignumber on boolean input when configured for bignumber
+  // eslint-disable-next-line mocha/no-skipped-tests
   it.skip('should return bignumber unary minus of a boolean', function () {
     const bigmath = math.create({ number: 'BigNumber' })
     assert.deepStrictEqual(bigmath.unaryMinus(true), bigmath.bignumber(-1))
@@ -23,6 +24,12 @@ describe('unaryMinus', function () {
     assert.deepStrictEqual(math.unaryMinus(2), -2)
     assert.deepStrictEqual(math.unaryMinus(-2), 2)
     assert.deepStrictEqual(math.unaryMinus(0), -0)
+  })
+
+  it('should perform unary minus of a bigint', function () {
+    assert.deepStrictEqual(math.unaryMinus(2n), -2n)
+    assert.deepStrictEqual(math.unaryMinus(-2n), 2n)
+    assert.deepStrictEqual(math.unaryMinus(0n), -0n)
   })
 
   it('should perform unary minus of a big number', function () {

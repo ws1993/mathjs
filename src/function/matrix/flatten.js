@@ -1,14 +1,13 @@
-import { clone } from '../../utils/object.js'
 import { flatten as flattenArray } from '../../utils/array.js'
 import { factory } from '../../utils/factory.js'
 
 const name = 'flatten'
-const dependencies = ['typed', 'matrix']
+const dependencies = ['typed']
 
-export const createFlatten = /* #__PURE__ */ factory(name, dependencies, ({ typed, matrix }) => {
+export const createFlatten = /* #__PURE__ */ factory(name, dependencies, ({ typed }) => {
   /**
-   * Flatten a multi dimensional matrix into a single dimensional matrix.
-   * It is guaranteed to always return a clone of the argument.
+   * Flatten a multidimensional matrix into a single dimensional matrix.
+   * A new matrix is returned, the original matrix is left untouched.
    *
    * Syntax:
    *
@@ -22,18 +21,24 @@ export const createFlatten = /* #__PURE__ */ factory(name, dependencies, ({ type
    *
    *    concat, resize, size, squeeze
    *
-   * @param {Matrix | Array} x   Matrix to be flattened
-   * @return {Matrix | Array} Returns the flattened matrix
+   * @param {DenseMatrix | Array} x   Matrix to be flattened
+   * @return {DenseMatrix | Array} Returns the flattened matrix
    */
   return typed(name, {
     Array: function (x) {
-      return flattenArray(clone(x))
+      return flattenArray(x)
     },
 
-    Matrix: function (x) {
-      const flat = flattenArray(clone(x.toArray()))
-      // TODO: return the same matrix type as x
-      return matrix(flat)
+    DenseMatrix: function (x) {
+      // Return the same matrix type as x (Dense or Sparse Matrix)
+      // Return the same data type as x
+      return x.create(flattenArray(x.valueOf(), true), x.datatype())
+    },
+
+    SparseMatrix: function (_x) {
+      throw new TypeError('SparseMatrix is not supported by function flatten ' +
+        'because it does not support 1D vectors. ' +
+        'Convert to a DenseMatrix or Array first. Example: flatten(x.toArray())')
     }
   })
 })

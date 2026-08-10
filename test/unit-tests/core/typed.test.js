@@ -1,9 +1,20 @@
 import assert from 'assert'
 import math from '../../../src/defaultInstance.js'
 import Decimal from 'decimal.js'
+import { ObjectWrappingMap, PartitionedMap } from '../../../src/utils/map.js'
 const math2 = math.create()
 
 describe('typed', function () {
+  it('should allow access to typed-function facilities', function () {
+    const fn = math.typed({
+      identifier: () => 'variable',
+      string: () => 'expression'
+    })
+    assert.strictEqual(fn('a96b2'), 'variable')
+    assert.strictEqual(fn('a96+b2'), 'expression')
+    assert.throws(() => fn(47), TypeError)
+  })
+
   // TODO: Move (most) of the type checks like isNumber, isComplex, to is.test.js
 
   it('should test whether a value is a number', function () {
@@ -27,6 +38,14 @@ describe('typed', function () {
     assert.strictEqual(math.isBigNumber({ isBigNumber: true }), false)
     assert.strictEqual(math.isBigNumber(2), false)
     assert.strictEqual(math.isBigNumber(), false)
+  })
+
+  it('should test whether a value is a bigint', function () {
+    assert.strictEqual(math.isBigInt(2n), true)
+    assert.strictEqual(math.isBigInt(BigInt(2)), true)
+    assert.strictEqual(math.isBigInt(2), false)
+    assert.strictEqual(math.isBigInt(null), false)
+    assert.strictEqual(math.isBigInt(), false)
   })
 
   it('should recognize a Decimal as a BigNumber', function () {
@@ -159,6 +178,37 @@ describe('typed', function () {
     assert.strictEqual(math.isNull(), false)
   })
 
+  it('should test whether a value is an object', function () {
+    assert.strictEqual(math.isObject({}), true)
+    assert.strictEqual(math.isObject({ a: 2 }), true)
+    assert.strictEqual(math.isObject(Object.create({})), true)
+    assert.strictEqual(math.isObject(null), false)
+    assert.strictEqual(math.isObject([]), false)
+    assert.strictEqual(math.isObject(), false)
+    assert.strictEqual(math.isObject(undefined), false)
+  })
+
+  it('should test whether a value is a Map', function () {
+    assert.strictEqual(math.isMap({}), false)
+    assert.strictEqual(math.isMap(new Map()), true)
+    assert.strictEqual(math.isMap(new ObjectWrappingMap({})), true)
+    assert.strictEqual(math.isMap(new PartitionedMap(new Map(), new Map(), new Set(['x']))), true)
+  })
+
+  it('should test whether a value is a PartitionedMap', function () {
+    assert.strictEqual(math.isPartitionedMap({}), false)
+    assert.strictEqual(math.isPartitionedMap(new Map()), false)
+    assert.strictEqual(math.isPartitionedMap(new ObjectWrappingMap({})), false)
+    assert.strictEqual(math.isPartitionedMap(new PartitionedMap(new Map(), new Map(), new Set(['x']))), true)
+  })
+
+  it('should test whether a value is an ObjectWrappingMap', function () {
+    assert.strictEqual(math.isObjectWrappingMap({}), false)
+    assert.strictEqual(math.isObjectWrappingMap(new Map()), false)
+    assert.strictEqual(math.isObjectWrappingMap(new ObjectWrappingMap({})), true)
+    assert.strictEqual(math.isObjectWrappingMap(new PartitionedMap(new Map(), new Map(), new Set(['x']))), false)
+  })
+
   it('should test whether a value is undefined', function () {
     assert.strictEqual(math.isUndefined(undefined), true)
     assert.strictEqual(math.isUndefined(math.matrix()), false)
@@ -183,7 +233,7 @@ describe('typed', function () {
     assert.strictEqual(math.isConstantNode(), false)
   })
 
-  it('should test whether a value is a SymolNode', function () {
+  it('should test whether a value is a SymbolNode', function () {
     assert.strictEqual(math.isSymbolNode(new math.SymbolNode('')), true)
     assert.strictEqual(math.isSymbolNode(new math2.SymbolNode('')), true)
     assert.strictEqual(math.isSymbolNode({ isSymbolNode: true }), false)
@@ -293,6 +343,17 @@ describe('typed', function () {
     assert.strictEqual(math.isRangeNode(), false)
   })
 
+  it('should test whether a value is a RelationalNode', function () {
+    const c = ''
+    const p = new math.ConstantNode(1)
+
+    assert.strictEqual(math.isRelationalNode(new math.RelationalNode([c], [p, p])), true)
+    assert.strictEqual(math.isRelationalNode(new math2.RelationalNode([c], [p, p])), true)
+    assert.strictEqual(math.isRelationalNode({ isRelationalNode: true }), false)
+    assert.strictEqual(math.isRelationalNode(2), false)
+    assert.strictEqual(math.isRelationalNode(), false)
+  })
+
   it('should test whether a value is a Node', function () {
     assert.strictEqual(math.isNode(new math.ConstantNode(1)), true)
     assert.strictEqual(math.isNode(new math2.ConstantNode(1)), true)
@@ -307,5 +368,34 @@ describe('typed', function () {
     assert.strictEqual(math.isChain({ isChain: true }), false)
     assert.strictEqual(math.isChain(2), false)
     assert.strictEqual(math.isChain(), false)
+  })
+
+  it('should convert a bigint to number if possible', function () {
+    const double = math.typed('double', {
+      number: (x) => x + x
+    })
+
+    assert.strictEqual(double(2), 4)
+    assert.strictEqual(double(2n), 4)
+    assert.throws(() => double(12345678901234567890n), /value exceeds the max safe integer/)
+  })
+
+  it('should convert a bigint to BigNumber', function () {
+    const double = math.typed('double', {
+      BigNumber: (x) => x.plus(x)
+    })
+
+    assert.deepStrictEqual(double(math.bignumber(2)), math.bignumber(4))
+    assert.deepStrictEqual(double(2n), math.bignumber(4))
+    assert.deepStrictEqual(double(12345678901234567890n), math.bignumber('24691357802469135780'))
+  })
+
+  it('should convert a bigint to Fraction', function () {
+    const double = math.typed('double', {
+      Fraction: (x) => x.add(x)
+    })
+
+    assert.deepStrictEqual(double(math.fraction(2)), math.fraction(4))
+    assert.deepStrictEqual(double(2n), math.fraction(4))
   })
 })

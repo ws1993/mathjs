@@ -1,32 +1,35 @@
 import { nearlyEqual as bigNearlyEqual } from '../../utils/bignumber/nearlyEqual.js'
 import { nearlyEqual } from '../../utils/number.js'
 import { factory } from '../../utils/factory.js'
-import { createAlgorithm03 } from '../../type/matrix/utils/algorithm03.js'
-import { createAlgorithm07 } from '../../type/matrix/utils/algorithm07.js'
-import { createAlgorithm12 } from '../../type/matrix/utils/algorithm12.js'
-import { createAlgorithm14 } from '../../type/matrix/utils/algorithm14.js'
-import { createAlgorithm13 } from '../../type/matrix/utils/algorithm13.js'
+import { createMatAlgo03xDSf } from '../../type/matrix/utils/matAlgo03xDSf.js'
+import { createMatAlgo07xSSf } from '../../type/matrix/utils/matAlgo07xSSf.js'
+import { createMatAlgo12xSfs } from '../../type/matrix/utils/matAlgo12xSfs.js'
+import { createMatrixAlgorithmSuite } from '../../type/matrix/utils/matrixAlgorithmSuite.js'
+import { createCompareUnits } from './compareUnits.js'
 
 const name = 'larger'
 const dependencies = [
   'typed',
   'config',
+  'bignumber',
   'matrix',
-  'DenseMatrix'
+  'DenseMatrix',
+  'concat',
+  'SparseMatrix'
 ]
 
-export const createLarger = /* #__PURE__ */ factory(name, dependencies, ({ typed, config, matrix, DenseMatrix }) => {
-  const algorithm03 = createAlgorithm03({ typed })
-  const algorithm07 = createAlgorithm07({ typed, DenseMatrix })
-  const algorithm12 = createAlgorithm12({ typed, DenseMatrix })
-  const algorithm13 = createAlgorithm13({ typed })
-  const algorithm14 = createAlgorithm14({ typed })
+export const createLarger = /* #__PURE__ */ factory(name, dependencies, ({ typed, config, bignumber, matrix, DenseMatrix, concat, SparseMatrix }) => {
+  const matAlgo03xDSf = createMatAlgo03xDSf({ typed })
+  const matAlgo07xSSf = createMatAlgo07xSSf({ typed, SparseMatrix })
+  const matAlgo12xSfs = createMatAlgo12xSfs({ typed, DenseMatrix })
+  const matrixAlgorithmSuite = createMatrixAlgorithmSuite({ typed, matrix, concat })
+  const compareUnits = createCompareUnits({ typed })
 
   /**
    * Test whether value x is larger than y.
    *
    * The function returns true when x is larger than y and the relative
-   * difference between x and y is larger than the configured epsilon. The
+   * difference between x and y is larger than the configured relTol and absTol. The
    * function cannot be used to compare values smaller than approximately 2.22e-16.
    *
    * For matrices, the function is evaluated element wise.
@@ -49,102 +52,51 @@ export const createLarger = /* #__PURE__ */ factory(name, dependencies, ({ typed
    *
    *    equal, unequal, smaller, smallerEq, largerEq, compare
    *
-   * @param  {number | BigNumber | Fraction | boolean | Unit | string | Array | Matrix} x First value to compare
-   * @param  {number | BigNumber | Fraction | boolean | Unit | string | Array | Matrix} y Second value to compare
+   * @param  {number | BigNumber | bigint | Fraction | boolean | Unit | string | Array | Matrix} x First value to compare
+   * @param  {number | BigNumber | bigint | Fraction | boolean | Unit | string | Array | Matrix} y Second value to compare
    * @return {boolean | Array | Matrix} Returns true when the x is larger than y, else returns false
    */
-  return typed(name, {
+  function bignumLarger (x, y) {
+    return x.gt(y) && !bigNearlyEqual(x, y, config.relTol, config.absTol)
+  }
 
-    'boolean, boolean': function (x, y) {
-      return x > y
-    },
+  return typed(
+    name,
+    createLargerNumber({ typed, config }),
+    {
+      'boolean, boolean': (x, y) => x > y,
 
-    'number, number': function (x, y) {
-      return x > y && !nearlyEqual(x, y, config.epsilon)
-    },
+      'BigNumber, BigNumber': bignumLarger,
 
-    'BigNumber, BigNumber': function (x, y) {
-      return x.gt(y) && !bigNearlyEqual(x, y, config.epsilon)
-    },
+      'bigint, bigint': (x, y) => x > y,
 
-    'Fraction, Fraction': function (x, y) {
-      return x.compare(y) === 1
-    },
+      'Fraction, Fraction': (x, y) => (x.compare(y) === 1),
 
-    'Complex, Complex': function () {
-      throw new TypeError('No ordering relation is defined for complex numbers')
-    },
+      'Fraction, BigNumber': function (x, y) {
+        return bignumLarger(bignumber(x), y)
+      },
 
-    'Unit, Unit': function (x, y) {
-      if (!x.equalBase(y)) {
-        throw new Error('Cannot compare units with different base')
+      'BigNumber, Fraction': function (x, y) {
+        return bignumLarger(x, bignumber(y))
+      },
+
+      'Complex, Complex': function () {
+        throw new TypeError('No ordering relation is defined for complex numbers')
       }
-      return this(x.value, y.value)
     },
-
-    'SparseMatrix, SparseMatrix': function (x, y) {
-      return algorithm07(x, y, this)
-    },
-
-    'SparseMatrix, DenseMatrix': function (x, y) {
-      return algorithm03(y, x, this, true)
-    },
-
-    'DenseMatrix, SparseMatrix': function (x, y) {
-      return algorithm03(x, y, this, false)
-    },
-
-    'DenseMatrix, DenseMatrix': function (x, y) {
-      return algorithm13(x, y, this)
-    },
-
-    'Array, Array': function (x, y) {
-      // use matrix implementation
-      return this(matrix(x), matrix(y)).valueOf()
-    },
-
-    'Array, Matrix': function (x, y) {
-      // use matrix implementation
-      return this(matrix(x), y)
-    },
-
-    'Matrix, Array': function (x, y) {
-      // use matrix implementation
-      return this(x, matrix(y))
-    },
-
-    'SparseMatrix, any': function (x, y) {
-      return algorithm12(x, y, this, false)
-    },
-
-    'DenseMatrix, any': function (x, y) {
-      return algorithm14(x, y, this, false)
-    },
-
-    'any, SparseMatrix': function (x, y) {
-      return algorithm12(y, x, this, true)
-    },
-
-    'any, DenseMatrix': function (x, y) {
-      return algorithm14(y, x, this, true)
-    },
-
-    'Array, any': function (x, y) {
-      // use matrix implementation
-      return algorithm14(matrix(x), y, this, false).valueOf()
-    },
-
-    'any, Array': function (x, y) {
-      // use matrix implementation
-      return algorithm14(matrix(y), x, this, true).valueOf()
-    }
-  })
+    compareUnits,
+    matrixAlgorithmSuite({
+      SS: matAlgo07xSSf,
+      DS: matAlgo03xDSf,
+      Ss: matAlgo12xSfs
+    })
+  )
 })
 
 export const createLargerNumber = /* #__PURE__ */ factory(name, ['typed', 'config'], ({ typed, config }) => {
   return typed(name, {
     'number, number': function (x, y) {
-      return x > y && !nearlyEqual(x, y, config.epsilon)
+      return x > y && !nearlyEqual(x, y, config.relTol, config.absTol)
     }
   })
 })

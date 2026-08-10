@@ -19,7 +19,7 @@ export const createCompareNatural = /* #__PURE__ */ factory(name, dependencies, 
    * the function compares in a natural way.
    *
    * For numeric values, x and y are considered equal when the relative
-   * difference between x and y is smaller than the configured epsilon.
+   * difference between x and y is smaller than the configured relTol and absTol.
    * The function cannot be used to compare values smaller than
    * approximately 2.22e-16.
    *
@@ -53,7 +53,7 @@ export const createCompareNatural = /* #__PURE__ */ factory(name, dependencies, 
    *    math.compareNatural('Answer: 10', 'Answer: 2') // returns 1
    *    math.compareText('Answer: 10', 'Answer: 2')    // returns -1
    *    math.compare('Answer: 10', 'Answer: 2')
-   *        // Error: Cannot convert "Answer: 10" to a number
+   *    // Error: Cannot convert "Answer: 10" to a number
    *
    *    const a = math.unit('5 cm')
    *    const b = math.unit('40 mm')
@@ -74,82 +74,88 @@ export const createCompareNatural = /* #__PURE__ */ factory(name, dependencies, 
    *
    *    compare, compareText
    *
+   * History:
+   *
+   *     v15.2   Handle bigints
+   *     v3.14   Created
+   *
+   *
    * @param  {*} x First value to compare
    * @param  {*} y Second value to compare
    * @return {number} Returns the result of the comparison:
    *                  1 when x > y, -1 when x < y, and 0 when x == y.
    */
-  return typed(name, {
-    'any, any': function (x, y) {
-      const typeX = typeOf(x)
-      const typeY = typeOf(y)
-      let c
+  return typed(name, { 'any, any': _compareNatural }) // just to check # args
 
-      // numeric types
-      if ((typeX === 'number' || typeX === 'BigNumber' || typeX === 'Fraction') &&
-          (typeY === 'number' || typeY === 'BigNumber' || typeY === 'Fraction')) {
-        c = compare(x, y)
-        if (c.toString() !== '0') {
-          // c can be number, BigNumber, or Fraction
-          return c > 0 ? 1 : -1 // return a number
-        } else {
-          return naturalSort(typeX, typeY)
-        }
-      }
+  function _compareNatural (x, y) {
+    const typeX = typeOf(x)
+    const typeY = typeOf(y)
+    let c
 
-      // matrix types
-      if (typeX === 'Array' || typeX === 'Matrix' ||
-          typeY === 'Array' || typeY === 'Matrix') {
-        c = compareMatricesAndArrays(this, x, y)
-        if (c !== 0) {
-          return c
-        } else {
-          return naturalSort(typeX, typeY)
-        }
-      }
-
-      // in case of different types, order by name of type, i.e. 'BigNumber' < 'Complex'
-      if (typeX !== typeY) {
+    // numeric types
+    if ((typeX === 'number' || typeX === 'BigNumber' || typeX === 'Fraction' || typeX === 'bigint') &&
+        (typeY === 'number' || typeY === 'BigNumber' || typeY === 'Fraction' || typeY === 'bigint')) {
+      c = compare(x, y)
+      if (c.toString() !== '0') {
+        // c can be number, BigNumber, or Fraction
+        return c > 0 ? 1 : -1 // return a number
+      } else {
         return naturalSort(typeX, typeY)
       }
-
-      if (typeX === 'Complex') {
-        return compareComplexNumbers(x, y)
-      }
-
-      if (typeX === 'Unit') {
-        if (x.equalBase(y)) {
-          return this(x.value, y.value)
-        }
-
-        // compare by units
-        return compareArrays(this, x.formatUnits(), y.formatUnits())
-      }
-
-      if (typeX === 'boolean') {
-        return compareBooleans(x, y)
-      }
-
-      if (typeX === 'string') {
-        return naturalSort(x, y)
-      }
-
-      if (typeX === 'Object') {
-        return compareObjects(this, x, y)
-      }
-
-      if (typeX === 'null') {
-        return 0
-      }
-
-      if (typeX === 'undefined') {
-        return 0
-      }
-
-      // this should not occur...
-      throw new TypeError('Unsupported type of value "' + typeX + '"')
     }
-  })
+
+    // matrix types
+    const matTypes = ['Array', 'DenseMatrix', 'SparseMatrix']
+    if (matTypes.includes(typeX) || matTypes.includes(typeY)) {
+      c = compareMatricesAndArrays(_compareNatural, x, y)
+      if (c !== 0) {
+        return c
+      } else {
+        return naturalSort(typeX, typeY)
+      }
+    }
+
+    // in case of different types, order by name of type, i.e. 'BigNumber' < 'Complex'
+    if (typeX !== typeY) {
+      return naturalSort(typeX, typeY)
+    }
+
+    if (typeX === 'Complex') {
+      return compareComplexNumbers(x, y)
+    }
+
+    if (typeX === 'Unit') {
+      if (x.equalBase(y)) {
+        return _compareNatural(x.value, y.value)
+      }
+
+      // compare by units
+      return compareArrays(_compareNatural, x.formatUnits(), y.formatUnits())
+    }
+
+    if (typeX === 'boolean') {
+      return compareBooleans(x, y)
+    }
+
+    if (typeX === 'string') {
+      return naturalSort(x, y)
+    }
+
+    if (typeX === 'Object') {
+      return compareObjects(_compareNatural, x, y)
+    }
+
+    if (typeX === 'null') {
+      return 0
+    }
+
+    if (typeX === 'undefined') {
+      return 0
+    }
+
+    // this should not occur...
+    throw new TypeError('Unsupported type of value "' + typeX + '"')
+  }
 
   /**
    * Compare mixed matrix/array types, by converting to same-shaped array.

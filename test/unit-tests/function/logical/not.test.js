@@ -24,6 +24,12 @@ describe('not', function () {
     assert.strictEqual(not(NaN), true)
   })
 
+  it('should not a bigint', function () {
+    assert.strictEqual(not(1n), false)
+    assert.strictEqual(not(-1n), false)
+    assert.strictEqual(not(0n), true)
+  })
+
   it('should not complex numbers', function () {
     assert.strictEqual(not(complex(1, 1)), false)
     assert.strictEqual(not(complex(0, 1)), false)
@@ -72,13 +78,16 @@ describe('not', function () {
     assert.deepStrictEqual(not(matrix([])), matrix([]))
   })
 
+  it('should not null', function () {
+    assert.strictEqual(not(null), true)
+  })
+
   it('should throw an error in case of invalid number of arguments', function () {
     assert.throws(function () { not() }, /TypeError: Too few arguments/)
     assert.throws(function () { not(1, 2) }, /TypeError: Too many arguments/)
   })
 
   it('should throw an error in case of invalid type if arguments', function () {
-    assert.throws(function () { not(null) }, /TypeError: Unexpected type of argument/)
     assert.throws(function () { not(new Date()) }, /TypeError: Unexpected type of argument/)
     assert.throws(function () { not({}) }, /TypeError: Unexpected type of argument/)
   })

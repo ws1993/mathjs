@@ -1,11 +1,13 @@
 import { deepMap } from '../../utils/collection.js'
 import { factory } from '../../utils/factory.js'
 import { isPositiveNumber } from '../../plain/number/index.js'
+import { nearlyEqual as bigNearlyEqual } from '../../utils/bignumber/nearlyEqual.js'
+import { nearlyEqual } from '../../utils/number.js'
 
 const name = 'isPositive'
-const dependencies = ['typed']
+const dependencies = ['typed', 'config']
 
-export const createIsPositive = /* #__PURE__ */ factory(name, dependencies, ({ typed }) => {
+export const createIsPositive = /* #__PURE__ */ factory(name, dependencies, ({ typed, config }) => {
   /**
    * Test whether a value is positive: larger than zero.
    * The function supports types `number`, `BigNumber`, `Fraction`, and `Unit`.
@@ -25,7 +27,7 @@ export const createIsPositive = /* #__PURE__ */ factory(name, dependencies, ({ t
    *    math.isPositive(0.5)                   // returns true
    *    math.isPositive(math.bignumber(2))     // returns true
    *    math.isPositive(math.fraction(-2, 5))  // returns false
-   *    math.isPositive(math.fraction(1,3))    // returns false
+   *    math.isPositive(math.fraction(1, 3))   // returns true
    *    math.isPositive('2')                   // returns true
    *    math.isPositive([2, 0, -3])            // returns [true, false, false]
    *
@@ -33,27 +35,25 @@ export const createIsPositive = /* #__PURE__ */ factory(name, dependencies, ({ t
    *
    *    isNumeric, isZero, isNegative, isInteger
    *
-   * @param {number | BigNumber | Fraction | Unit | Array | Matrix} x  Value to be tested
+   * @param {number | BigNumber | bigint | Fraction | Unit | Array | Matrix} x  Value to be tested
    * @return {boolean}  Returns true when `x` is larger than zero.
    *                    Throws an error in case of an unknown data type.
    */
   return typed(name, {
-    number: isPositiveNumber,
+    number: x => nearlyEqual(x, 0, config.relTol, config.absTol) ? false : isPositiveNumber(x),
 
-    BigNumber: function (x) {
-      return !x.isNeg() && !x.isZero() && !x.isNaN()
-    },
+    BigNumber: x =>
+      bigNearlyEqual(x, new x.constructor(0), config.relTol, config.absTol)
+        ? false
+        : !x.isNeg() && !x.isZero() && !x.isNaN(),
 
-    Fraction: function (x) {
-      return x.s > 0 && x.n > 0
-    },
+    bigint: x => x > 0n,
 
-    Unit: function (x) {
-      return this(x.value)
-    },
+    Fraction: x => x.s > 0n && x.n > 0n,
 
-    'Array | Matrix': function (x) {
-      return deepMap(x, this)
-    }
+    Unit: typed.referToSelf(self =>
+      x => typed.find(self, x.valueType())(x.value)),
+
+    'Array | Matrix': typed.referToSelf(self => x => deepMap(x, self))
   })
 })

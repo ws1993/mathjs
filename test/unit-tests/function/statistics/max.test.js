@@ -3,7 +3,9 @@ import math from '../../../../src/defaultInstance.js'
 const BigNumber = math.BigNumber
 const Complex = math.Complex
 const DenseMatrix = math.DenseMatrix
+const fraction = math.fraction
 const max = math.max
+const unit = math.unit
 
 describe('max', function () {
   it('should return the max of numbers', function () {
@@ -22,6 +24,20 @@ describe('max', function () {
   it('should return the max of strings by their numerical value', function () {
     assert.strictEqual(max('10', '3', '4', '2'), 10)
     assert.strictEqual(max('10'), 10)
+  })
+
+  it('should return the max of strings by their numerical value (with BigNumber config)', function () {
+    const bigmath = math.create({ number: 'BigNumber' })
+    assert.deepStrictEqual(bigmath.max('10', '3', '4', '2'), bigmath.bignumber(10))
+    assert.deepStrictEqual(bigmath.max('10'), bigmath.bignumber(10))
+  })
+
+  it('should return the max of strings by their numerical value (with bigint config)', function () {
+    const bigmath = math.create({ number: 'bigint' })
+    assert.strictEqual(bigmath.max('10', '3', '4', '2'), 10n)
+    assert.strictEqual(bigmath.max('10'), 10n)
+    assert.strictEqual(bigmath.max('2.5'), 2.5) // fallback to number
+    assert.strictEqual(bigmath.max('2.5', '4'), 4n) // fallback to number
   })
 
   it('should return the max element from a vector', function () {
@@ -74,6 +90,21 @@ describe('max', function () {
     assert(isNaN(max([1, 3, NaN])))
     assert(isNaN(max([NaN, NaN, NaN])))
     assert(isNaN(max(NaN, NaN)))
+    assert(isNaN(max(BigNumber(NaN), BigNumber(123))))
+    assert(isNaN((max(BigNumber(123), BigNumber(NaN), NaN))))
+    assert(isNaN(max(unit(NaN, 's'), unit(123, 's')).value))
+    assert(isNaN(max(unit(123, 's'), unit(NaN, 's')).value))
+    assert(isNaN(max(1, 3, fraction(2, 3), fraction(1, 2), NaN, BigNumber(1), BigNumber(NaN), 5, Infinity, -Infinity)))
+  })
+
+  it('should return the largest of mixed types', function () {
+    assert.deepStrictEqual(max(10n, 3, new BigNumber(7), fraction(3, 4)), 10n)
+    assert.deepStrictEqual(max(3n, 10, new BigNumber(7), fraction(3, 4)), 10)
+    const big10 = new BigNumber(10)
+    assert.deepStrictEqual(max(3n, 7, big10, fraction(3, 4)), big10)
+    const tenplus = fraction(43, 4)
+    assert.deepStrictEqual(max(3n, 7, new BigNumber(0.75), tenplus), tenplus)
+    assert.strictEqual(max(3n, 7, big10, tenplus, Infinity), Infinity)
   })
 
   it('should throw an error when called multiple arrays or matrices', function () {
@@ -99,8 +130,8 @@ describe('max', function () {
     assert.throws(function () { max([[2, new Date(), 4]]) }, /TypeError: Cannot calculate max, unexpected type of argument/)
     assert.throws(function () { max([2, null, 4]) }, /TypeError: Cannot calculate max, unexpected type of argument/)
     assert.throws(function () { max([[2, 5], [4, null], [1, 7]], 0) }, /TypeError: Cannot calculate max, unexpected type of argument/)
-    assert.throws(function () { max('a', 'b') }, /Error: Cannot convert "b" to a number/)
-    assert.throws(function () { max('a') }, /SyntaxError: String "a" is no valid number/)
+    assert.throws(function () { max('a', 'b') }, /Error: Cannot convert "a" to a number/)
+    assert.throws(function () { max('a') }, /Error: Cannot convert "a" to a number/)
   })
 
   it('should return undefined if called with an empty array', function () {

@@ -1,29 +1,32 @@
 import { factory } from '../../utils/factory.js'
-import { createAlgorithm02 } from '../../type/matrix/utils/algorithm02.js'
-import { createAlgorithm03 } from '../../type/matrix/utils/algorithm03.js'
-import { createAlgorithm05 } from '../../type/matrix/utils/algorithm05.js'
-import { createAlgorithm11 } from '../../type/matrix/utils/algorithm11.js'
-import { createAlgorithm12 } from '../../type/matrix/utils/algorithm12.js'
-import { createAlgorithm13 } from '../../type/matrix/utils/algorithm13.js'
-import { createAlgorithm14 } from '../../type/matrix/utils/algorithm14.js'
-import { modNumber } from '../../plain/number/index.js'
+import { createFloor } from './floor.js'
+import { createMatAlgo02xDS0 } from '../../type/matrix/utils/matAlgo02xDS0.js'
+import { createMatAlgo03xDSf } from '../../type/matrix/utils/matAlgo03xDSf.js'
+import { createMatAlgo05xSfSf } from '../../type/matrix/utils/matAlgo05xSfSf.js'
+import { createMatAlgo11xS0s } from '../../type/matrix/utils/matAlgo11xS0s.js'
+import { createMatAlgo12xSfs } from '../../type/matrix/utils/matAlgo12xSfs.js'
+import { createMatrixAlgorithmSuite } from '../../type/matrix/utils/matrixAlgorithmSuite.js'
 
 const name = 'mod'
 const dependencies = [
   'typed',
+  'config',
+  'round',
   'matrix',
   'equalScalar',
-  'DenseMatrix'
+  'zeros',
+  'DenseMatrix',
+  'concat'
 ]
 
-export const createMod = /* #__PURE__ */ factory(name, dependencies, ({ typed, matrix, equalScalar, DenseMatrix }) => {
-  const algorithm02 = createAlgorithm02({ typed, equalScalar })
-  const algorithm03 = createAlgorithm03({ typed })
-  const algorithm05 = createAlgorithm05({ typed, equalScalar })
-  const algorithm11 = createAlgorithm11({ typed, equalScalar })
-  const algorithm12 = createAlgorithm12({ typed, DenseMatrix })
-  const algorithm13 = createAlgorithm13({ typed })
-  const algorithm14 = createAlgorithm14({ typed })
+export const createMod = /* #__PURE__ */ factory(name, dependencies, ({ typed, config, round, matrix, equalScalar, zeros, DenseMatrix, concat }) => {
+  const floor = createFloor({ typed, config, round, matrix, equalScalar, zeros, DenseMatrix })
+  const matAlgo02xDS0 = createMatAlgo02xDS0({ typed, equalScalar })
+  const matAlgo03xDSf = createMatAlgo03xDSf({ typed })
+  const matAlgo05xSfSf = createMatAlgo05xSfSf({ typed, equalScalar })
+  const matAlgo11xS0s = createMatAlgo11xS0s({ typed, equalScalar })
+  const matAlgo12xSfs = createMatAlgo12xSfs({ typed, DenseMatrix })
+  const matrixAlgorithmSuite = createMatrixAlgorithmSuite({ typed, matrix, concat })
 
   /**
    * Calculates the modulus, the remainder of an integer division.
@@ -48,92 +51,73 @@ export const createMod = /* #__PURE__ */ factory(name, dependencies, ({ typed, m
    *    function isOdd(x) {
    *      return math.mod(x, 2) != 0
    *    }
-   *
-   *    isOdd(2)                      // returns false
+   *    isOdd(2)                      // returns false...
    *    isOdd(3)                      // returns true
    *
    * See also:
    *
    *    divide
    *
-   * @param  {number | BigNumber | Fraction | Array | Matrix} x Dividend
-   * @param  {number | BigNumber | Fraction | Array | Matrix} y Divisor
-   * @return {number | BigNumber | Fraction | Array | Matrix} Returns the remainder of `x` divided by `y`.
+   * History:
+   *
+   *    v13    Handle bigints
+   *    v11.6  Support matrix broadcasting
+   *    v2     Handle Fractions
+   *    v0.2   Created
+   *
+   * @param  {number | BigNumber | bigint | Fraction | Array | Matrix} x Dividend
+   * @param  {number | BigNumber | bigint | Fraction | Array | Matrix} y Divisor
+   * @return {number | BigNumber | bigint | Fraction | Array | Matrix} Returns the remainder of `x` divided by `y`.
    */
-  return typed(name, {
+  return typed(
+    name,
+    {
+      'number, number': _modNumber,
 
-    'number, number': modNumber,
+      'BigNumber, BigNumber': function (x, y) {
+        return y.isZero() ? x : x.sub(y.mul(floor(x.div(y))))
+      },
 
-    'BigNumber, BigNumber': function (x, y) {
-      if (y.isNeg()) {
-        throw new Error('Cannot calculate mod for a negative divisor')
+      'bigint, bigint': function (x, y) {
+        if (y === 0n) {
+          return x
+        }
+
+        if (x < 0) {
+          const m = x % y
+          return m === 0n ? m : m + y
+        }
+
+        return x % y
+      },
+
+      'Fraction, Fraction': function (x, y) {
+        return y.equals(0) ? x : x.sub(y.mul(floor(x.div(y))))
       }
-      return y.isZero() ? x : x.mod(y)
     },
+    matrixAlgorithmSuite({
+      SS: matAlgo05xSfSf,
+      DS: matAlgo03xDSf,
+      SD: matAlgo02xDS0,
+      Ss: matAlgo11xS0s,
+      sS: matAlgo12xSfs
+    })
+  )
 
-    'Fraction, Fraction': function (x, y) {
-      if (y.compare(0) < 0) {
-        throw new Error('Cannot calculate mod for a negative divisor')
-      }
-      // Workaround suggested in Fraction.js library to calculate correct modulo for negative dividend
-      return x.compare(0) >= 0 ? x.mod(y) : x.mod(y).add(y).mod(y)
-    },
+  /**
+ * Calculate the modulus of two numbers
+ * @param {number} x
+ * @param {number} y
+ * @returns {number} res
+ * @private
+ */
+  function _modNumber (x, y) {
+    // We don't use JavaScript's % operator here as this doesn't work
+    // correctly for x < 0 and x === 0
+    // see https://en.wikipedia.org/wiki/Modulo_operation
 
-    'SparseMatrix, SparseMatrix': function (x, y) {
-      return algorithm05(x, y, this, false)
-    },
-
-    'SparseMatrix, DenseMatrix': function (x, y) {
-      return algorithm02(y, x, this, true)
-    },
-
-    'DenseMatrix, SparseMatrix': function (x, y) {
-      return algorithm03(x, y, this, false)
-    },
-
-    'DenseMatrix, DenseMatrix': function (x, y) {
-      return algorithm13(x, y, this)
-    },
-
-    'Array, Array': function (x, y) {
-      // use matrix implementation
-      return this(matrix(x), matrix(y)).valueOf()
-    },
-
-    'Array, Matrix': function (x, y) {
-      // use matrix implementation
-      return this(matrix(x), y)
-    },
-
-    'Matrix, Array': function (x, y) {
-      // use matrix implementation
-      return this(x, matrix(y))
-    },
-
-    'SparseMatrix, any': function (x, y) {
-      return algorithm11(x, y, this, false)
-    },
-
-    'DenseMatrix, any': function (x, y) {
-      return algorithm14(x, y, this, false)
-    },
-
-    'any, SparseMatrix': function (x, y) {
-      return algorithm12(y, x, this, true)
-    },
-
-    'any, DenseMatrix': function (x, y) {
-      return algorithm14(y, x, this, true)
-    },
-
-    'Array, any': function (x, y) {
-      // use matrix implementation
-      return algorithm14(matrix(x), y, this, false).valueOf()
-    },
-
-    'any, Array': function (x, y) {
-      // use matrix implementation
-      return algorithm14(matrix(y), x, this, true).valueOf()
-    }
-  })
+    // We use mathjs floor to handle errors associated with
+    // precision float approximation
+    return (y === 0) ? x : x - y * floor(x / y)
+  }
 })

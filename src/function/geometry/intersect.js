@@ -83,7 +83,7 @@ export const createIntersect = /* #__PURE__ */ factory(name, dependencies, ({ ty
 
       return _intersect3d(w[0], w[1], w[2], x[0], x[1], x[2], y[0], y[1], y[2], z[0], z[1], z[2])
     } else {
-      throw new TypeError('Arrays with two or thee dimensional points expected')
+      throw new TypeError('Arrays with two or three dimensional points expected')
     }
   }
 
@@ -119,7 +119,7 @@ export const createIntersect = /* #__PURE__ */ factory(name, dependencies, ({ ty
     const d2 = subtract(o2, p2b)
     const det = subtract(multiplyScalar(d1[0], d2[1]), multiplyScalar(d2[0], d1[1]))
     if (isZero(det)) return null
-    if (smaller(abs(det), config.epsilon)) {
+    if (smaller(abs(det), config.relTol)) {
       return null
     }
     const d20o11 = multiplyScalar(d2[0], o1[1])

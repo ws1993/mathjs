@@ -5,7 +5,11 @@ const numeric = math.numeric
 describe('numeric', function () {
   it('should throw if called with wrong number of arguments', function () {
     assert.throws(() => { numeric() }, /Cannot convert/)
-    assert.throws(() => { numeric(3.14) }, /Cannot convert/)
+    assert.throws(() => { numeric(3.14, 'Fraction', 'pi') }, SyntaxError)
+  })
+
+  it('should default to converting to number', function () {
+    assert.strictEqual(numeric('3.14'), 3.14)
   })
 
   it('should throw if called with invalid argument', function () {
@@ -13,10 +17,10 @@ describe('numeric', function () {
     assert.throws(() => { numeric(null, 'number') }, /Cannot convert/)
     assert.throws(() => { numeric([], 'number') }, /Cannot convert/)
     assert.throws(() => { numeric({}, 'number') }, /Cannot convert/)
-    assert.throws(() => { numeric('foo', 'number') }, /is no valid number/)
-    assert.throws(() => { numeric('2.3.4', 'number') }, /is no valid number/)
-    assert.throws(() => { numeric('234a', 'number') }, /is no valid number/)
-    assert.throws(() => { numeric('234 1', 'number') }, /is no valid number/)
+    assert.throws(() => { numeric('foo', 'number') }, /is not a valid number/)
+    assert.throws(() => { numeric('2.3.4', 'number') }, /is not a valid number/)
+    assert.throws(() => { numeric('234a', 'number') }, /is not a valid number/)
+    assert.throws(() => { numeric('234 1', 'number') }, /is not a valid number/)
   })
 
   it('should return Infinity', function () {
@@ -34,8 +38,10 @@ describe('numeric', function () {
   })
 
   it('should convert a BigNumber to a Fraction', function () {
-    assert.deepStrictEqual(numeric(math.bignumber(-0.125), 'Fraction'), math.fraction(-1, 8))
-    assert.deepStrictEqual(numeric(math.bignumber('0.142857142857142857142857'), 'Fraction'), math.fraction(1, 7))
+    assert.deepStrictEqual(numeric(math.bignumber('-0.125'), 'Fraction'), math.fraction(-1, 8))
+    assert.deepStrictEqual(numeric(math.bignumber('0.142857142857142857142857'), 'Fraction'),
+      math.fraction(142857142857142857142857n, 1000000000000000000000000n)
+    )
   })
 
   it('should convert a BigNumber to a number', function () {

@@ -1,5 +1,11 @@
 // run all benchmarks
-require('./expression_parser')
-require('./algebra')
-require('./matrix_operations')
-require('./prime')
+import './expression_parser.js'
+import './algebra.js'
+import './derivative.js'
+import './roots.js'
+import './matrix_operations.js'
+import './prime.js'
+import './load.js'
+import './scope_variables.js'
+import './map.js'
+import './forEach.js'

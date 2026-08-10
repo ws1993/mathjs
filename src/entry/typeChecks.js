@@ -1,4 +1,3 @@
-
 // util functions
 export {
   isAccessorNode,
@@ -6,6 +5,7 @@ export {
   isArrayNode,
   isAssignmentNode,
   isBigNumber,
+  isBigInt,
   isBlockNode,
   isBoolean,
   isChain,
@@ -29,11 +29,15 @@ export {
   isString,
   isUndefined,
   isObject,
+  isMap,
+  isPartitionedMap,
+  isObjectWrappingMap,
   isObjectNode,
   isOperatorNode,
   isParenthesisNode,
   isRange,
   isRangeNode,
+  isRelationalNode,
   isRegExp,
   isResultSet,
   isSparseMatrix,

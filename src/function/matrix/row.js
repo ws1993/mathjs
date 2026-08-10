@@ -1,4 +1,5 @@
 import { factory } from '../../utils/factory.js'
+import { isMatrix } from '../../utils/is.js'
 import { clone } from '../../utils/object.js'
 import { validateIndex } from '../../utils/array.js'
 
@@ -50,7 +51,11 @@ export const createRow = /* #__PURE__ */ factory(name, dependencies, ({ typed, I
     validateIndex(row, value.size()[0])
 
     const columnRange = range(0, value.size()[1])
-    const index = new Index(row, columnRange)
-    return value.subset(index)
+    const index = new Index([row], columnRange)
+    const result = value.subset(index)
+    // once config.legacySubset just return result
+    return isMatrix(result)
+      ? result
+      : matrix([[result]])
   }
 })

@@ -1,6 +1,7 @@
 import { format } from '../../utils/string.js'
 import { isString } from '../../utils/is.js'
 import { factory } from '../../utils/factory.js'
+import { printTemplate } from '../../utils/print.js'
 
 const name = 'print'
 const dependencies = ['typed']
@@ -23,12 +24,12 @@ export const createPrint = /* #__PURE__ */ factory(name, dependencies, ({ typed 
    *     // the following outputs: 'The value of pi is 3.141592654'
    *     math.print('The value of pi is $pi', {pi: math.pi}, 10)
    *
-   *     // the following outputs: 'hello Mary! The date is 2013-03-23'
+   *     // the following outputs: 'Hello Mary! The date is 2013-03-23'
    *     math.print('Hello $user.name! The date is $date', {
    *       user: {
    *         name: 'Mary',
    *       },
-   *       date: new Date(2013, 2, 23).toISOString().substring(0, 10)
+   *       date: '2013-03-23'
    *     })
    *
    *     // the following outputs: 'My favorite fruits are apples and bananas !'
@@ -66,9 +67,12 @@ export const createPrint = /* #__PURE__ */ factory(name, dependencies, ({ typed 
  * @private
  */
 function _print (template, values, options) {
-  return template.replace(/\$([\w.]+)/g, function (original, key) {
+  return template.replace(printTemplate, function (original, key) {
     const keys = key.split('.')
     let value = values[keys.shift()]
+    if (value !== undefined && value.isMatrix) {
+      value = value.toArray()
+    }
     while (keys.length && value !== undefined) {
       const k = keys.shift()
       value = k ? value[k] : value + '.'

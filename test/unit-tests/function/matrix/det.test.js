@@ -1,5 +1,4 @@
 import assert from 'assert'
-import approx from '../../../../tools/approx.js'
 import math from '../../../../src/defaultInstance.js'
 const BigNumber = math.BigNumber
 const Complex = math.Complex
@@ -14,35 +13,41 @@ describe('det', function () {
     assert.strictEqual(det([5]), 5)
     assert.strictEqual(det([[1, 2], [3, 4]]), -2)
     assert.strictEqual(det(new DenseMatrix([[1, 2], [3, 4]])), -2)
-    approx.equal(det([
+    assert.strictEqual(det([
       [-2, 2, 3],
       [-1, 1, 3],
       [2, 0, -1]
     ]), 6)
-    approx.equal(det([
+    assert.strictEqual(det([
       [1, 4, 7],
       [3, 0, 5],
       [-1, 9, 11]
     ]), -8)
-    approx.equal(det([
+    assert.strictEqual(det([
       [1, 7, 4, 3, 7],
       [0, 7, 0, 3, 7],
       [0, 7, 4, 3, 0],
       [1, 7, 5, 9, 7],
       [2, 7, 4, 3, 7]
     ]), -1176)
-    approx.equal(det([
+    assert.strictEqual(det([
       [0, 7, 0, 3, 7],
       [1, 7, 4, 3, 7],
       [0, 7, 4, 3, 0],
       [1, 7, 5, 9, 7],
       [2, 7, 4, 3, 7]
     ]), 1176)
-    approx.equal(det(diag([4, -5, 6])), -120)
+    assert.strictEqual(det(diag([4, -5, 6])), -120)
+    assert.strictEqual(
+      det([
+        [6.123234262925839e-17, -1, 1],
+        [-0.8660253882408142, 0.5, 1],
+        [-0.6495190262794495, -0.3749999701976776, 1]
+      ]), 0.4330126459590976)
   })
 
   it('should return the determinant of a sparse matrix', function () {
-    approx.equal(det(new SparseMatrix([
+    assert.strictEqual(det(new SparseMatrix([
       [1, 7, 4, 3, 7],
       [0, 7, 0, 3, 7],
       [0, 7, 4, 3, 0],
@@ -130,6 +135,16 @@ describe('det', function () {
       [1, new BigNumber(2)],
       [new BigNumber(3), 4]
     ]), new math.BigNumber(-2))
+  })
+
+  it('should return 1 for an empty array or matrix', function () {
+    assert.deepStrictEqual(det([]), 1)
+    assert.deepStrictEqual(det([[]]), 1)
+    assert.deepStrictEqual(det([[], []]), 1)
+
+    assert.deepStrictEqual(det(math.matrix([])), 1)
+    assert.deepStrictEqual(det(math.matrix([[]])), 1)
+    assert.deepStrictEqual(det(math.matrix([[], []])), 1)
   })
 
   it('should not change the value of the initial matrix', function () {

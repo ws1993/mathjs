@@ -36,15 +36,19 @@
  * @returns {function} The created typed-function.
  */
 
+import typedFunction from 'typed-function'
+import { factory } from '../../utils/factory.js'
 import {
   isAccessorNode,
   isArray,
   isArrayNode,
   isAssignmentNode,
+  isBigInt,
   isBigNumber,
   isBlockNode,
   isBoolean,
   isChain,
+  isCollection,
   isComplex,
   isConditionalNode,
   isConstantNode,
@@ -57,6 +61,7 @@ import {
   isHelp,
   isIndex,
   isIndexNode,
+  isMap,
   isMatrix,
   isNode,
   isNull,
@@ -68,6 +73,7 @@ import {
   isRange,
   isRangeNode,
   isRegExp,
+  isRelationalNode,
   isResultSet,
   isSparseMatrix,
   isString,
@@ -75,10 +81,7 @@ import {
   isUndefined,
   isUnit
 } from '../../utils/is.js'
-import typedFunction from 'typed-function'
 import { digits } from '../../utils/number.js'
-import { factory } from '../../utils/factory.js'
-import { isMap } from '../../utils/map.js'
 
 // returns a new instance of typed-function
 let _createTyped = function () {
@@ -109,12 +112,23 @@ export const createTyped = /* #__PURE__ */ factory('typed', dependencies, functi
   // define all types. The order of the types determines in which order function
   // arguments are type-checked (so for performance it's important to put the
   // most used types first).
-  typed.types = [
+  typed.clear()
+  typed.addTypes([
     { name: 'number', test: isNumber },
     { name: 'Complex', test: isComplex },
     { name: 'BigNumber', test: isBigNumber },
+    { name: 'bigint', test: isBigInt },
     { name: 'Fraction', test: isFraction },
     { name: 'Unit', test: isUnit },
+    // The following type matches a valid variable name, i.e., an alphanumeric
+    // string starting with an alphabetic character. It is used (at least)
+    // in the definition of the derivative() function, as the argument telling
+    // what to differentiate over must (currently) be a variable.
+    // TODO: deprecate the identifier type (it's not used anymore, see https://github.com/josdejong/mathjs/issues/3253)
+    {
+      name: 'identifier',
+      test: s => isString && /^\p{L}[\p{L}\d]*$/u.test(s)
+    },
     { name: 'string', test: isString },
     { name: 'Chain', test: isChain },
     { name: 'Array', test: isArray },
@@ -146,13 +160,14 @@ export const createTyped = /* #__PURE__ */ factory('typed', dependencies, functi
     { name: 'OperatorNode', test: isOperatorNode },
     { name: 'ParenthesisNode', test: isParenthesisNode },
     { name: 'RangeNode', test: isRangeNode },
+    { name: 'RelationalNode', test: isRelationalNode },
     { name: 'SymbolNode', test: isSymbolNode },
 
     { name: 'Map', test: isMap },
     { name: 'Object', test: isObject } // order 'Object' last, it matches on other classes too
-  ]
+  ])
 
-  typed.conversions = [
+  typed.addConversions([
     {
       from: 'number',
       to: 'BigNumber',
@@ -180,12 +195,6 @@ export const createTyped = /* #__PURE__ */ factory('typed', dependencies, functi
         return new Complex(x, 0)
       }
     }, {
-      from: 'number',
-      to: 'string',
-      convert: function (x) {
-        return x + ''
-      }
-    }, {
       from: 'BigNumber',
       to: 'Complex',
       convert: function (x) {
@@ -194,6 +203,37 @@ export const createTyped = /* #__PURE__ */ factory('typed', dependencies, functi
         }
 
         return new Complex(x.toNumber(), 0)
+      }
+    }, {
+      from: 'bigint',
+      to: 'number',
+      convert: function (x) {
+        if (x > Number.MAX_SAFE_INTEGER) {
+          throw new TypeError('Cannot implicitly convert bigint to number: ' +
+            'value exceeds the max safe integer value (value: ' + x + ')')
+        }
+
+        return Number(x)
+      }
+    }, {
+      from: 'bigint',
+      to: 'BigNumber',
+      convert: function (x) {
+        if (!BigNumber) {
+          throwNoBignumber(x)
+        }
+
+        return new BigNumber(x.toString())
+      }
+    }, {
+      from: 'bigint',
+      to: 'Fraction',
+      convert: function (x) {
+        if (!Fraction) {
+          throwNoFraction(x)
+        }
+
+        return new Fraction(x)
       }
     }, {
       from: 'Fraction',
@@ -261,6 +301,16 @@ export const createTyped = /* #__PURE__ */ factory('typed', dependencies, functi
       }
     }, {
       from: 'string',
+      to: 'bigint',
+      convert: function (x) {
+        try {
+          return BigInt(x)
+        } catch (err) {
+          throw new Error('Cannot convert "' + x + '" to BigInt')
+        }
+      }
+    }, {
+      from: 'string',
       to: 'Fraction',
       convert: function (x) {
         if (!Fraction) {
@@ -305,6 +355,12 @@ export const createTyped = /* #__PURE__ */ factory('typed', dependencies, functi
       }
     }, {
       from: 'boolean',
+      to: 'bigint',
+      convert: function (x) {
+        return BigInt(+x)
+      }
+    }, {
+      from: 'boolean',
       to: 'Fraction',
       convert: function (x) {
         if (!Fraction) {
@@ -336,7 +392,45 @@ export const createTyped = /* #__PURE__ */ factory('typed', dependencies, functi
         return matrix.valueOf()
       }
     }
-  ]
+  ])
+
+  // Provide a suggestion on how to call a function elementwise
+  // This was added primarily as guidance for the v10 -> v11 transition,
+  // and could potentially be removed in the future if it no longer seems
+  // to be helpful.
+  typed.onMismatch = (name, args, signatures) => {
+    const usualError = typed.createError(name, args, signatures)
+    if (['wrongType', 'mismatch'].includes(usualError.data.category) &&
+        args.length === 1 && isCollection(args[0]) &&
+        // check if the function can be unary:
+        signatures.some(sig => !sig.params.includes(','))) {
+      const err = new TypeError(
+        `Function '${name}' doesn't apply to matrices. To call it ` +
+          `elementwise on a matrix 'M', try 'map(M, ${name})'.`)
+      err.data = usualError.data
+      throw err
+    }
+    throw usualError
+  }
+
+  // Provide a suggestion on how to call a function elementwise
+  // This was added primarily as guidance for the v10 -> v11 transition,
+  // and could potentially be removed in the future if it no longer seems
+  // to be helpful.
+  typed.onMismatch = (name, args, signatures) => {
+    const usualError = typed.createError(name, args, signatures)
+    if (['wrongType', 'mismatch'].includes(usualError.data.category) &&
+        args.length === 1 && isCollection(args[0]) &&
+        // check if the function can be unary:
+        signatures.some(sig => !sig.params.includes(','))) {
+      const err = new TypeError(
+        `Function '${name}' doesn't apply to matrices. To call it ` +
+          `elementwise on a matrix 'M', try 'map(M, ${name})'.`)
+      err.data = usualError.data
+      throw err
+    }
+    throw usualError
+  }
 
   return typed
 })

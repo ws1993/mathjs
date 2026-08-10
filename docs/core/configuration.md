@@ -8,12 +8,15 @@ import { create, all } from 'mathjs'
 
 // create a mathjs instance with configuration
 const config = {
-  epsilon: 1e-12,
+  relTol: 1e-12,
+  absTol: 1e-15,
   matrix: 'Matrix',
   number: 'number',
+  numberFallback: 'number',
   precision: 64,
   predictable: false,
-  randomSeed: null
+  randomSeed: null,
+  legacySubset: false
 }
 const math = create(all, config)
 
@@ -28,9 +31,13 @@ math.config({
 
 The following configuration options are available:
 
-- `epsilon`. The minimum relative difference used to test equality between two
+- `relTol`. The minimum relative difference used to test equality between two
   compared values. This value is used by all relational functions.
   Default value is `1e-12`.
+
+- `absTol`. The minimum absolute difference used to test equality between two
+  compared values. This value is used by all relational functions.
+  Default value is `1e-15`.
 
 - `matrix`. The default type of matrix output for functions.
   Available values are: `'Matrix'` (default) or `'Array'`.
@@ -40,21 +47,29 @@ The following configuration options are available:
   determined by the option `matrix`. In case of mixed matrix
   inputs, a matrix will be returned always.
 
-- `number`. The type of numeric output for functions which cannot
-  determine the numeric type from the inputs. For most functions though,
-  the type of output is determined from the the input:
-  a number as input will return a number as output,
-  a BigNumber as input returns a BigNumber as output.
+- `number`. The type used to parse strings into a numeric value or create a new
+  numeric value internally.
 
-  For example the functions `math.evaluate('2+3')`, `math.parse('2+3')`,
-  `math.range('1:10')`, and `math.unit('5cm')` use the `number` configuration
-  setting. But `math.sqrt(4)` will always return the number `2`
-  regardless of the `number` configuration, because the input is a number.
+  For most functions, the type of output is determined from the input: 
+  a number as input will return a number as output, a BigNumber as input 
+  returns a BigNumber as output. But for example the functions 
+  `math.evaluate('2+3')`, `math.parse('2+3')`, `math.range('1:10')`, 
+  and `math.unit('5cm')` use the `number` configuration setting. 
 
-  Available values are: `'number'` (default), `'BigNumber'`, or `'Fraction'`.
-  [BigNumbers](../datatypes/bignumbers.js) have higher precision than the default
-  numbers of JavaScript, and [`Fractions`](../datatypes/fractions.js) store
-  values in terms of a numerator and denominator.
+  Note that `math.sqrt(4)` will always return the number `2` regardless of 
+  the `number` configuration, because the numeric type can be determined from 
+  the input value.
+
+  Available values are: `'number'` (default), `'BigNumber'`, `'bigint'`, or `'Fraction'`.
+  [BigNumbers](../datatypes/bignumbers.md) have higher precision than the default numbers of JavaScript, 
+  [bigint](../datatypes/bigints.md) can represent large integer numbers, 
+  and [`Fractions`](../datatypes/fractions.md) store values in terms of a numerator and 
+  denominator.
+
+- `numberFallback`. When `number` is configured for example with value `'bigint'`,
+  and a value cannot be represented as `bigint` like in `math.evaluate('2.3')`, 
+  the value will be parsed in the type configured with `numberFallback`. 
+  Available values: `'number'` (default) or `'BigNumber'`.
 
 - `precision`. The maximum number of significant digits for BigNumbers.
   This setting only applies to BigNumbers, not to numbers.
@@ -69,6 +84,8 @@ The following configuration options are available:
   equations.
 
 - `randomSeed`. Set this option to seed pseudo random number generation, making it deterministic. The pseudo random number generator is reset with the seed provided each time this option is set. For example, setting it to `'a'` will cause `math.random()` to return `0.43449421599986604` upon the first call after setting the option every time. Set to `null` to seed the pseudo random number generator with a random seed. Default value is `null`.
+
+- `legacySubset`. When set to `true`, the `subset` function behaves as in earlier versions of math.js: retrieving a subset where the index size contains only one element, returns the value itself. When set to `false` (default), `subset` eliminates dimensions from the result only if the index dimension is a scalar; if the index dimension is a range, matrix, or array, the dimensions are preserved. This option is helpful for maintaining compatibility with legacy code that depends on the previous behavior.
 
 
 ## Examples

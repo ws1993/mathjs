@@ -1,11 +1,11 @@
 import assert from 'assert'
-import approx from '../../../../tools/approx.js'
+import { approxEqual } from '../../../../tools/approx.js'
 import math from '../../../../src/defaultInstance.js'
 
 const Unit = math.Unit
 const std = math.expression.transform.std
 
-describe('std', function () {
+describe('std.transform', function () {
   const inputMatrix = [ // this is a 4x3x2 matrix, full test coverage
     [[10, 200], [30, 40], [50, 60]],
     [[70, 80], [90, 100], [180, 120]],
@@ -55,14 +55,14 @@ describe('std', function () {
     const b = new Unit(5, 'cm')
     const c = new Unit(8, 'cm')
     const res = math.unit(3, 'cm')
-    approx.equal(std([a, b, c]).toNumber('cm'), res.toNumber('cm'))
+    approxEqual(std([a, b, c]).toNumber('cm'), res.toNumber('cm'))
   })
 
   it('should compute the standard deviation value of quantities with compatible units', function () {
     const a = math.unit(1, 'm')
     const b = math.unit(50, 'cm')
     const c = math.unit(math.sqrt(1250), 'cm')
-    approx.equal(std([a, b]).toNumber('cm'), c.toNumber('cm'))
+    approxEqual(std([a, b]).toNumber('cm'), c.toNumber('cm'))
   })
 
   it('should not compute the standard deviation value of quantities with incompatible units', function () {

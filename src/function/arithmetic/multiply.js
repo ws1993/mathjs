@@ -1,9 +1,8 @@
 import { factory } from '../../utils/factory.js'
 import { isMatrix } from '../../utils/is.js'
-import { extend } from '../../utils/object.js'
 import { arraySize } from '../../utils/array.js'
-import { createAlgorithm11 } from '../../type/matrix/utils/algorithm11.js'
-import { createAlgorithm14 } from '../../type/matrix/utils/algorithm14.js'
+import { createMatAlgo11xS0s } from '../../type/matrix/utils/matAlgo11xS0s.js'
+import { createMatAlgo14xDs } from '../../type/matrix/utils/matAlgo14xDs.js'
 
 const name = 'multiply'
 const dependencies = [
@@ -16,8 +15,8 @@ const dependencies = [
 ]
 
 export const createMultiply = /* #__PURE__ */ factory(name, dependencies, ({ typed, matrix, addScalar, multiplyScalar, equalScalar, dot }) => {
-  const algorithm11 = createAlgorithm11({ typed, equalScalar })
-  const algorithm14 = createAlgorithm14({ typed })
+  const matAlgo11xS0s = createMatAlgo11xS0s({ typed, equalScalar })
+  const matAlgo14xDs = createMatAlgo14xDs({ typed })
 
   function _validateMatrixDimensions (size1, size2) {
     // check left operand dimensions
@@ -111,11 +110,11 @@ export const createMultiply = /* #__PURE__ */ factory(name, dependencies, ({ typ
     // a dense
     const adata = a._data
     const asize = a._size
-    const adt = a._datatype
+    const adt = a._datatype || a.getDataType()
     // b dense
     const bdata = b._data
     const bsize = b._size
-    const bdt = b._datatype
+    const bdt = b._datatype || b.getDataType()
     // rows & columns
     const alength = asize[0]
     const bcolumns = bsize[1]
@@ -128,7 +127,7 @@ export const createMultiply = /* #__PURE__ */ factory(name, dependencies, ({ typ
     let mf = multiplyScalar
 
     // process data types
-    if (adt && bdt && adt === bdt && typeof adt === 'string') {
+    if (adt && bdt && adt === bdt && typeof adt === 'string' && adt !== 'mixed') {
       // datatype
       dt = adt
       // find signatures that matches (dt, dt)
@@ -155,7 +154,7 @@ export const createMultiply = /* #__PURE__ */ factory(name, dependencies, ({ typ
     return a.createDenseMatrix({
       data: c,
       size: [bcolumns],
-      datatype: dt
+      datatype: adt === a._datatype && bdt === b._datatype ? dt : undefined
     })
   }
 
@@ -199,10 +198,10 @@ export const createMultiply = /* #__PURE__ */ factory(name, dependencies, ({ typ
     // a dense
     const adata = a._data
     const asize = a._size
-    const adt = a._datatype
+    const adt = a._datatype || a.getDataType()
     // b dense
     const bdata = b._data
-    const bdt = b._datatype
+    const bdt = b._datatype || b.getDataType()
     // rows & columns
     const arows = asize[0]
     const acolumns = asize[1]
@@ -215,7 +214,7 @@ export const createMultiply = /* #__PURE__ */ factory(name, dependencies, ({ typ
     let mf = multiplyScalar
 
     // process data types
-    if (adt && bdt && adt === bdt && typeof adt === 'string') {
+    if (adt && bdt && adt === bdt && typeof adt === 'string' && adt !== 'mixed') {
       // datatype
       dt = adt
       // find signatures that matches (dt, dt)
@@ -244,7 +243,7 @@ export const createMultiply = /* #__PURE__ */ factory(name, dependencies, ({ typ
     return a.createDenseMatrix({
       data: c,
       size: [arows],
-      datatype: dt
+      datatype: adt === a._datatype && bdt === b._datatype ? dt : undefined
     })
   }
 
@@ -256,15 +255,15 @@ export const createMultiply = /* #__PURE__ */ factory(name, dependencies, ({ typ
    *
    * @return {Matrix}             DenseMatrix    (MxC)
    */
-  function _multiplyDenseMatrixDenseMatrix (a, b) {
+  function _multiplyDenseMatrixDenseMatrix (a, b) { // getDataType()
     // a dense
     const adata = a._data
     const asize = a._size
-    const adt = a._datatype
+    const adt = a._datatype || a.getDataType()
     // b dense
     const bdata = b._data
     const bsize = b._size
-    const bdt = b._datatype
+    const bdt = b._datatype || b.getDataType()
     // rows & columns
     const arows = asize[0]
     const acolumns = asize[1]
@@ -278,7 +277,7 @@ export const createMultiply = /* #__PURE__ */ factory(name, dependencies, ({ typ
     let mf = multiplyScalar
 
     // process data types
-    if (adt && bdt && adt === bdt && typeof adt === 'string') {
+    if (adt && bdt && adt === bdt && typeof adt === 'string' && adt !== 'mixed' && adt !== 'mixed') {
       // datatype
       dt = adt
       // find signatures that matches (dt, dt)
@@ -312,7 +311,7 @@ export const createMultiply = /* #__PURE__ */ factory(name, dependencies, ({ typ
     return a.createDenseMatrix({
       data: c,
       size: [arows, bcolumns],
-      datatype: dt
+      datatype: adt === a._datatype && bdt === b._datatype ? dt : undefined
     })
   }
 
@@ -328,13 +327,13 @@ export const createMultiply = /* #__PURE__ */ factory(name, dependencies, ({ typ
     // a dense
     const adata = a._data
     const asize = a._size
-    const adt = a._datatype
+    const adt = a._datatype || a.getDataType()
     // b sparse
     const bvalues = b._values
     const bindex = b._index
     const bptr = b._ptr
     const bsize = b._size
-    const bdt = b._datatype
+    const bdt = b._datatype || b._data === undefined ? b._datatype : b.getDataType()
     // validate b matrix
     if (!bvalues) { throw new Error('Cannot multiply Dense Matrix times Pattern only Matrix') }
     // rows & columns
@@ -353,7 +352,7 @@ export const createMultiply = /* #__PURE__ */ factory(name, dependencies, ({ typ
     let zero = 0
 
     // process data types
-    if (adt && bdt && adt === bdt && typeof adt === 'string') {
+    if (adt && bdt && adt === bdt && typeof adt === 'string' && adt !== 'mixed') {
       // datatype
       dt = adt
       // find signatures that matches (dt, dt)
@@ -374,7 +373,7 @@ export const createMultiply = /* #__PURE__ */ factory(name, dependencies, ({ typ
       index: cindex,
       ptr: cptr,
       size: [arows, bcolumns],
-      datatype: dt
+      datatype: adt === a._datatype && bdt === b._datatype ? dt : undefined
     })
 
     // loop b columns
@@ -438,12 +437,12 @@ export const createMultiply = /* #__PURE__ */ factory(name, dependencies, ({ typ
     const avalues = a._values
     const aindex = a._index
     const aptr = a._ptr
-    const adt = a._datatype
+    const adt = a._datatype || a._data === undefined ? a._datatype : a.getDataType()
     // validate a matrix
     if (!avalues) { throw new Error('Cannot multiply Pattern only Matrix times Dense Matrix') }
     // b dense
     const bdata = b._data
-    const bdt = b._datatype
+    const bdt = b._datatype || b.getDataType()
     // rows & columns
     const arows = a._size[0]
     const brows = b._size[0]
@@ -464,7 +463,7 @@ export const createMultiply = /* #__PURE__ */ factory(name, dependencies, ({ typ
     let zero = 0
 
     // process data types
-    if (adt && bdt && adt === bdt && typeof adt === 'string') {
+    if (adt && bdt && adt === bdt && typeof adt === 'string' && adt !== 'mixed') {
       // datatype
       dt = adt
       // find signatures that matches (dt, dt)
@@ -517,13 +516,13 @@ export const createMultiply = /* #__PURE__ */ factory(name, dependencies, ({ typ
     // update ptr
     cptr[1] = cindex.length
 
-    // return sparse matrix
+    // matrix to return
     return a.createSparseMatrix({
       values: cvalues,
       index: cindex,
       ptr: cptr,
       size: [arows, 1],
-      datatype: dt
+      datatype: adt === a._datatype && bdt === b._datatype ? dt : undefined
     })
   }
 
@@ -540,12 +539,12 @@ export const createMultiply = /* #__PURE__ */ factory(name, dependencies, ({ typ
     const avalues = a._values
     const aindex = a._index
     const aptr = a._ptr
-    const adt = a._datatype
+    const adt = a._datatype || a._data === undefined ? a._datatype : a.getDataType()
     // validate a matrix
     if (!avalues) { throw new Error('Cannot multiply Pattern only Matrix times Dense Matrix') }
     // b dense
     const bdata = b._data
-    const bdt = b._datatype
+    const bdt = b._datatype || b.getDataType()
     // rows & columns
     const arows = a._size[0]
     const brows = b._size[0]
@@ -563,7 +562,7 @@ export const createMultiply = /* #__PURE__ */ factory(name, dependencies, ({ typ
     let zero = 0
 
     // process data types
-    if (adt && bdt && adt === bdt && typeof adt === 'string') {
+    if (adt && bdt && adt === bdt && typeof adt === 'string' && adt !== 'mixed') {
       // datatype
       dt = adt
       // find signatures that matches (dt, dt)
@@ -584,7 +583,7 @@ export const createMultiply = /* #__PURE__ */ factory(name, dependencies, ({ typ
       index: cindex,
       ptr: cptr,
       size: [arows, bcolumns],
-      datatype: dt
+      datatype: adt === a._datatype && bdt === b._datatype ? dt : undefined
     })
 
     // workspace
@@ -651,12 +650,12 @@ export const createMultiply = /* #__PURE__ */ factory(name, dependencies, ({ typ
     const avalues = a._values
     const aindex = a._index
     const aptr = a._ptr
-    const adt = a._datatype
+    const adt = a._datatype || a._data === undefined ? a._datatype : a.getDataType()
     // b sparse
     const bvalues = b._values
     const bindex = b._index
     const bptr = b._ptr
-    const bdt = b._datatype
+    const bdt = b._datatype || b._data === undefined ? b._datatype : b.getDataType()
 
     // rows & columns
     const arows = a._size[0]
@@ -672,7 +671,7 @@ export const createMultiply = /* #__PURE__ */ factory(name, dependencies, ({ typ
     let mf = multiplyScalar
 
     // process data types
-    if (adt && bdt && adt === bdt && typeof adt === 'string') {
+    if (adt && bdt && adt === bdt && typeof adt === 'string' && adt !== 'mixed') {
       // datatype
       dt = adt
       // find signatures that matches (dt, dt)
@@ -690,7 +689,7 @@ export const createMultiply = /* #__PURE__ */ factory(name, dependencies, ({ typ
       index: cindex,
       ptr: cptr,
       size: [arows, bcolumns],
-      datatype: dt
+      datatype: adt === a._datatype && bdt === b._datatype ? dt : undefined
     })
 
     // workspace
@@ -790,22 +789,22 @@ export const createMultiply = /* #__PURE__ */ factory(name, dependencies, ({ typ
    *
    *    divide, prod, cross, dot
    *
-   * @param  {number | BigNumber | Fraction | Complex | Unit | Array | Matrix} x First value to multiply
-   * @param  {number | BigNumber | Fraction | Complex | Unit | Array | Matrix} y Second value to multiply
-   * @return {number | BigNumber | Fraction | Complex | Unit | Array | Matrix} Multiplication of `x` and `y`
+   * @param  {number | BigNumber | bigint | Fraction | Complex | Unit | Array | Matrix} x First value to multiply
+   * @param  {number | BigNumber | bigint | Fraction | Complex | Unit | Array | Matrix} y Second value to multiply
+   * @return {number | BigNumber | bigint | Fraction | Complex | Unit | Array | Matrix} Multiplication of `x` and `y`
    */
-  return typed(name, extend({
+  return typed(name, multiplyScalar, {
     // we extend the signatures of multiplyScalar with signatures dealing with matrices
 
-    'Array, Array': function (x, y) {
+    'Array, Array': typed.referTo('Matrix, Matrix', selfMM => (x, y) => {
       // check dimensions
       _validateMatrixDimensions(arraySize(x), arraySize(y))
 
       // use dense matrix implementation
-      const m = this(matrix(x), matrix(y))
+      const m = selfMM(matrix(x), matrix(y))
       // return array or scalar
       return isMatrix(m) ? m.valueOf() : m
-    },
+    }),
 
     'Matrix, Matrix': function (x, y) {
       // dimensions
@@ -834,52 +833,50 @@ export const createMultiply = /* #__PURE__ */ factory(name, dependencies, ({ typ
       return _multiplyMatrixMatrix(x, y)
     },
 
-    'Matrix, Array': function (x, y) {
-      // use Matrix * Matrix implementation
-      return this(x, matrix(y))
-    },
+    'Matrix, Array': typed.referTo('Matrix,Matrix', selfMM =>
+      (x, y) => selfMM(x, matrix(y))),
 
-    'Array, Matrix': function (x, y) {
+    'Array, Matrix': typed.referToSelf(self => (x, y) => {
       // use Matrix * Matrix implementation
-      return this(matrix(x, y.storage()), y)
-    },
+      return self(matrix(x, y.storage()), y)
+    }),
 
     'SparseMatrix, any': function (x, y) {
-      return algorithm11(x, y, multiplyScalar, false)
+      return matAlgo11xS0s(x, y, multiplyScalar, false)
     },
 
     'DenseMatrix, any': function (x, y) {
-      return algorithm14(x, y, multiplyScalar, false)
+      return matAlgo14xDs(x, y, multiplyScalar, false)
     },
 
     'any, SparseMatrix': function (x, y) {
-      return algorithm11(y, x, multiplyScalar, true)
+      return matAlgo11xS0s(y, x, multiplyScalar, true)
     },
 
     'any, DenseMatrix': function (x, y) {
-      return algorithm14(y, x, multiplyScalar, true)
+      return matAlgo14xDs(y, x, multiplyScalar, true)
     },
 
     'Array, any': function (x, y) {
       // use matrix implementation
-      return algorithm14(matrix(x), y, multiplyScalar, false).valueOf()
+      return matAlgo14xDs(matrix(x), y, multiplyScalar, false).valueOf()
     },
 
     'any, Array': function (x, y) {
       // use matrix implementation
-      return algorithm14(matrix(y), x, multiplyScalar, true).valueOf()
+      return matAlgo14xDs(matrix(y), x, multiplyScalar, true).valueOf()
     },
 
     'any, any': multiplyScalar,
 
-    'any, any, ...any': function (x, y, rest) {
-      let result = this(x, y)
+    'any, any, ...any': typed.referToSelf(self => (x, y, rest) => {
+      let result = self(x, y)
 
       for (let i = 0; i < rest.length; i++) {
-        result = this(result, rest[i])
+        result = self(result, rest[i])
       }
 
       return result
-    }
-  }, multiplyScalar.signatures))
+    })
+  })
 })

@@ -31,7 +31,7 @@ describe('FunctionNode', function () {
   it('should throw an error when calling without new operator', function () {
     const s = new SymbolNode('sqrt')
     const c = new ConstantNode(4)
-    assert.throws(function () { FunctionNode(s, [c]) }, SyntaxError)
+    assert.throws(function () { FunctionNode(s, [c]) }, TypeError)
   })
 
   it('should throw an error when calling with wrong arguments', function () {
@@ -115,7 +115,7 @@ describe('FunctionNode', function () {
       return 'myFunction(' + args.join(', ') + ')'
     }
     myFunction.rawArgs = true
-    mymath.import({ myFunction: myFunction })
+    mymath.import({ myFunction })
 
     const s = new SymbolNode('myFunction')
     const a = new mymath.ConstantNode(4)
@@ -162,19 +162,25 @@ describe('FunctionNode', function () {
       assert.ok(false, 'should not be executed')
     }
     myFunction.rawArgs = true
-    mymath.import({ myFunction: myFunction })
+    mymath.import({ myFunction })
 
     const s = new mymath.SymbolNode('myFunction')
     const a = new mymath.ConstantNode(4)
     const b = new mymath.ConstantNode(5)
     const n = new mymath.FunctionNode(s, [a, b])
 
+    let actualArgs
     const scope = {
-      myFunction: function () {
+      myFunction: function (...args) {
+        actualArgs = args
         return 42
       }
     }
+
     assert.strictEqual(n.compile().evaluate(scope), 42)
+    assert.strictEqual(actualArgs[0], a.value)
+    assert.strictEqual(actualArgs[1], b.value)
+    assert.deepStrictEqual(actualArgs.length, 2)
   })
 
   it('should filter a FunctionNode', function () {
@@ -438,6 +444,31 @@ describe('FunctionNode', function () {
     assert.strictEqual(n2.toString({ handler: customFunction }), '[subtract](const(1, number), const(2, number), )')
   })
 
+  it('should stringify a FunctionNode with custom toHTML', function () {
+    // Also checks if the custom functions get passed on to the children
+    const customFunction = function (node, options) {
+      if (node.type === 'FunctionNode') {
+        let string = '[' + node.name + ']('
+        node.args.forEach(function (arg) {
+          string += arg.toHTML(options) + ', '
+        })
+        string += ')'
+        return string
+      } else if (node.type === 'ConstantNode') {
+        return 'const(' + node.value + ', ' + math.typeOf(node.value) + ')'
+      }
+    }
+
+    const a = new ConstantNode(1)
+    const b = new ConstantNode(2)
+
+    const n1 = new FunctionNode(new SymbolNode('add'), [a, b])
+    const n2 = new FunctionNode(new SymbolNode('subtract'), [a, b])
+
+    assert.strictEqual(n1.toHTML({ handler: customFunction }), '[add](const(1, number), const(2, number), )')
+    assert.strictEqual(n2.toHTML({ handler: customFunction }), '[subtract](const(1, number), const(2, number), )')
+  })
+
   it('should stringify a FunctionNode with custom toString for a single function', function () {
     // Also checks if the custom functions get passed on to the children
     const customFunction = {
@@ -488,6 +519,9 @@ describe('FunctionNode', function () {
     const o = new OperatorNode('+', 'add', [c1, c2])
     const n3 = new FunctionNode(new SymbolNode('permutations'), [o])
     assert.strictEqual(n3.toTex(), '\\mathrm{permutations}\\left(4+5\\right)')
+
+    const n4 = new FunctionNode(new SymbolNode('nthRoots'), [c1, c2])
+    assert.strictEqual(n4.toTex(), '\\{y : y^5 = {4}\\}')
   })
 
   it('should have an identifier', function () {
@@ -620,8 +654,47 @@ describe('FunctionNode', function () {
     assert.throws(function () { tree.toTex() }, TypeError)
   })
 
+  it('evaluates different sorts of function calls', function () {
+    const examples = [
+      ['1; square(3)', 9],
+      ['f(x) = x*x; f(3)', 9],
+      ['a={n:7, f: lambda(x) = x*x}; a.f(3)', 9],
+      ['a=[7, f(x)=x*x]; a[2](3)', 9],
+      ['twiceOn(f,x) = f(f(x)); twiceOn(square, 3)', 81],
+      ['twice(f) = lambda(x) = f(f(x)); fourth = twice(square); fourth(3)', 81],
+      ['twice(f) = lambda(x) = f(f(x)); [twice(square)][1](3)', 81]
+    ]
+    for (const example of examples) {
+      const answer = math.evaluate(example[0]).valueOf()[0]
+      assert.strictEqual(answer, example[1])
+    }
+  })
+
+  it('produces clear error messages when the callee is not a function', function () {
+    const throwers = [
+      ['tau(3)', TypeError, /tau.*value[\s\S]*6.28/],
+      ['f = 7; f(3)', TypeError, /f.*value[\s\S]*7/],
+      ['a={f: 7}; a.f(3)', Error, /method.*f/],
+      ['a=[1,2]; a[2](3)', TypeError, /a\[2\].*value[\s\S]*2/],
+      ['twiceOn(f, x) = f(f(x)); twiceOn(7, 3)',
+        TypeError,
+        /f.*received[\s\S]*7/],
+      ['twice(f) = lambda(x) = f(f(x)); weird = twice(7); weird(3)',
+        TypeError,
+        /f.*received[\s\S]*7/],
+      ['twice(f) = lambda(x) = f(f(x)); [twice(7)][1](3)',
+        TypeError,
+        /f.*received[\s\S]*7/],
+      ['[square(7)][1](3)', TypeError, /square\(7\).*evaluate[\s\S]*49/]
+    ]
+    for (const problem of throwers) {
+      assert.throws(() => math.evaluate(problem[0]), problem[1])
+      assert.throws(() => math.evaluate(problem[0]), problem[2])
+    }
+  })
+
   // FIXME: custom instances should have there own function, not return the same function?
-  after(() => {
+  after(function () {
     const customMath = math.create()
     delete customMath.add.toTex
     delete customMath.sum.toTex

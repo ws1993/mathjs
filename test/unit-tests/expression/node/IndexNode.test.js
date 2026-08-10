@@ -29,7 +29,7 @@ describe('IndexNode', function () {
   })
 
   it('should throw an error when calling without new operator', function () {
-    assert.throws(function () { IndexNode([]) }, SyntaxError)
+    assert.throws(function () { IndexNode([]) }, TypeError)
   })
 
   it('should filter an IndexNode', function () {
@@ -52,8 +52,8 @@ describe('IndexNode', function () {
   })
 
   it('should run forEach on an IndexNode', function () {
-    const b = new ConstantNode(2)
-    const c = new ConstantNode(1)
+    const b = new ConstantNode(2n)
+    const c = new ConstantNode(1n)
     const n = new IndexNode([b, c])
 
     const nodes = []
@@ -222,6 +222,26 @@ describe('IndexNode', function () {
     const n = new IndexNode([b, c])
 
     assert.strictEqual(n.toString({ handler: customFunction }), 'const(1, number), const(2, number)')
+  })
+
+  it('should stringify an IndexNode with custom toHTML', function () {
+    // Also checks if the custom functions get passed on to the children
+    const customFunction = function (node, options) {
+      if (node.type === 'IndexNode') {
+        return node.dimensions.map(function (range) {
+          return range.toHTML(options)
+        }).join(', ')
+      } else if (node.type === 'ConstantNode') {
+        return 'const(' + node.value + ', ' + math.typeOf(node.value) + ')'
+      }
+    }
+
+    const b = new ConstantNode(1)
+    const c = new ConstantNode(2)
+
+    const n = new IndexNode([b, c])
+
+    assert.strictEqual(n.toHTML({ handler: customFunction }), 'const(1, number), const(2, number)')
   })
 
   it('toJSON and fromJSON', function () {

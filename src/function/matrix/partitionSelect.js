@@ -5,7 +5,7 @@ import { factory } from '../../utils/factory.js'
 const name = 'partitionSelect'
 const dependencies = ['typed', 'isNumeric', 'isNaN', 'compare']
 
-export const createPartitionSelect = /* #__PURE__ */ factory(name, dependencies, ({ typed, isNumeric, isNaN, compare }) => {
+export const createPartitionSelect = /* #__PURE__ */ factory(name, dependencies, ({ typed, isNumeric, isNaN: mathIsNaN, compare }) => {
   const asc = compare
   const desc = (a, b) => -compare(a, b)
 
@@ -21,13 +21,18 @@ export const createPartitionSelect = /* #__PURE__ */ factory(name, dependencies,
    *
    * Examples:
    *
-   *    math.partitionSelect([5, 10, 1], 2)           // returns 10
-   *    math.partitionSelect(['C', 'B', 'A', 'D'], 1) // returns 'B'
+   *    math.partitionSelect([5, 10, 1], 2)                               // returns 10
+   *    math.partitionSelect(['C', 'B', 'A', 'D'], 1, math.compareText)   // returns 'B'
    *
    *    function sortByLength (a, b) {
    *      return a.length - b.length
    *    }
    *    math.partitionSelect(['Langdon', 'Tom', 'Sara'], 2, sortByLength) // returns 'Langdon'
+   *
+   *    // the input array is mutated
+   *    arr = [5, 2, 1]
+   *    math.partitionSelect(arr, 0) // returns 1, arr is now: [1, 2, 5]
+   *    math.partitionSelect(arr, 1, 'desc') // returns 2, arr is now: [5, 2, 1]
    *
    * See also:
    *
@@ -94,7 +99,7 @@ export const createPartitionSelect = /* #__PURE__ */ factory(name, dependencies,
 
     // check for NaN values since these can cause an infinite while loop
     for (let i = 0; i < arr.length; i++) {
-      if (isNumeric(arr[i]) && isNaN(arr[i])) {
+      if (isNumeric(arr[i]) && mathIsNaN(arr[i])) {
         return arr[i] // return NaN
       }
     }

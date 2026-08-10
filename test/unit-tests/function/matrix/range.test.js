@@ -3,6 +3,8 @@ import math from '../../../../src/defaultInstance.js'
 const range = math.range
 const matrix = math.matrix
 const bignumber = math.bignumber
+const unit = math.unit
+const evaluate = math.evaluate
 
 describe('range', function () {
   it('should parse a valid string correctly', function () {
@@ -34,9 +36,26 @@ describe('range', function () {
     assert.deepStrictEqual(range(2, -4, -2), matrix([2, 0, -2]))
   })
 
-  it('should create an empty range when step==0', function () {
-    assert.deepStrictEqual(range(0, 10, 0), matrix([]))
-    assert.deepStrictEqual(range(0, 10, 0, true), matrix([]))
+  it('should throw an error when step==0', function () {
+    assert.throws(function () { range(0, 0, 0) }, /Step must be non-zero/)
+    assert.throws(function () { range(0, 10, 0) }, /Step must be non-zero/)
+    assert.throws(function () { range(0, 10, 0, true) }, /Step must be non-zero/)
+  })
+
+  it('should create an empty range when start and stop are equal', function () {
+    assert.deepStrictEqual(range(0, 0), matrix([]))
+    assert.deepStrictEqual(range(1, 1, 2), matrix([]))
+    assert.deepStrictEqual(range('0:0'), matrix([]))
+    assert.deepStrictEqual(range('0:1:0'), matrix([]))
+    assert.deepStrictEqual(range('1:2:1'), matrix([]))
+    assert.deepStrictEqual(range('1:1:1'), matrix([]))
+  })
+
+  it('should create an array with the end value when start and stop are equal and includeEnd=true', function () {
+    assert.deepStrictEqual(range(0, 0, true), matrix([0]))
+    assert.deepStrictEqual(range(1, 1, 2, true), matrix([1]))
+    assert.deepStrictEqual(range('0:0', true), matrix([0]))
+    assert.deepStrictEqual(range('1:1:1', true), matrix([1]))
   })
 
   it('should output an array when setting matrix==="array"', function () {
@@ -48,14 +67,32 @@ describe('range', function () {
     assert.deepStrictEqual(math2.range(5, 0, -1), [5, 4, 3, 2, 1])
   })
 
+  it('should create a range with bigints', function () {
+    assert.deepStrictEqual(range(1n, 3n), matrix([1n, 2n]))
+    assert.deepStrictEqual(range(3n, 1n, -1n), matrix([3n, 2n]))
+    assert.deepStrictEqual(range(1n, 3n, true), matrix([1n, 2n, 3n]))
+    assert.deepStrictEqual(range(3n, 1n, -1n, true), matrix([3n, 2n, 1n]))
+  })
+
+  it('should handle mixed numbers and bigints appropriately', function () {
+    assert.deepStrictEqual(range(1n, 3), matrix([1n, 2n]))
+    assert.deepStrictEqual(range(3, 1n, -1n), matrix([3n, 2n]))
+    assert.deepStrictEqual(range(3n, 1, -1), matrix([3n, 2n]))
+    assert.deepStrictEqual(range(1, 3n, true), matrix([1n, 2n, 3n]))
+    assert.deepStrictEqual(range(3n, 1, -1n, true), matrix([3n, 2n, 1n]))
+    assert.deepStrictEqual(range(3, 1n, -1, true), matrix([3n, 2n, 1n]))
+    assert.deepStrictEqual(range(1, 5, 2n), matrix([1, 3]))
+    assert.deepStrictEqual(range(5, 1, -2n, true), matrix([5, 3, 1]))
+  })
+
   it('should create a range with bignumbers', function () {
     assert.deepStrictEqual(range(bignumber(1), bignumber(3)), matrix([bignumber(1), bignumber(2)]))
     assert.deepStrictEqual(range(bignumber(3), bignumber(1), bignumber(-1)), matrix([bignumber(3), bignumber(2)]))
   })
 
-  it('should create an empty range from bignumbers when step==0', function () {
-    assert.deepStrictEqual(range(bignumber(0), bignumber(10), bignumber(0)), matrix([]))
-    assert.deepStrictEqual(range(bignumber(0), bignumber(10), bignumber(0), true), matrix([]))
+  it('should throw an error from bignumbers when step==0', function () {
+    assert.throws(function () { range(bignumber(0), bignumber(10), bignumber(0)) }, /Step must be non-zero/)
+    assert.throws(function () { range(bignumber(0), bignumber(10), bignumber(0), true) }, /Step must be non-zero/)
   })
 
   it('should create a range with mixed numbers and bignumbers', function () {
@@ -82,6 +119,18 @@ describe('range', function () {
   it('should throw an error when parsing a an invalid string to a bignumber range', function () {
     const bigmath = math.create({ number: 'BigNumber' })
     assert.throws(function () { bigmath.range('1:a') }, /is no valid range/)
+  })
+
+  it('should create a range with units', function () {
+    assert.deepStrictEqual(range(unit(1, 'm'), unit(3, 'm'), unit(1, 'm')), matrix([unit(1, 'm'), unit(2, 'm')]))
+    assert.deepStrictEqual(range(unit(3, 'm'), unit(1, 'm'), unit(-1, 'm')), matrix([unit(3, 'm'), unit(2, 'm')]))
+  })
+
+  it('should parse a range with units', function () {
+    assert.deepStrictEqual(evaluate('1m:1m:3m'), matrix([unit(1, 'm'), unit(2, 'm'), unit(3, 'm')]))
+    assert.deepStrictEqual(evaluate('3m:-1m:0m'), matrix([unit(3, 'm'), unit(2, 'm'), unit(1, 'm'), unit(0, 'm')]))
+    assert.deepStrictEqual(evaluate('range(1m,3m,1m)'), matrix([unit(1, 'm'), unit(2, 'm'), unit(3, 'm')]))
+    assert.deepStrictEqual(evaluate('range(3m,0m,-1m)'), matrix([unit(3, 'm'), unit(2, 'm'), unit(1, 'm'), unit(0, 'm')]))
   })
 
   it('should gracefully handle round-off errors', function () {
@@ -118,6 +167,38 @@ describe('range', function () {
       assert.deepStrictEqual(range(bignumber(3), bignumber(1), bignumber(-1), true), matrix([bignumber(3), bignumber(2), bignumber(1)]))
     })
 
+    it('should handle Fractions', function () {
+      const frac = math.fraction
+      assert.deepStrictEqual(
+        range(frac(1, 3), frac(10, 3)),
+        matrix([frac(1, 3), frac(4, 3), frac(7, 3)]))
+      assert.deepStrictEqual(
+        range(frac(1, 3), frac(7, 3), true),
+        matrix([frac(1, 3), frac(4, 3), frac(7, 3)]))
+      assert.deepStrictEqual(
+        range(frac(1, 3), frac(4, 3), frac(1, 3)),
+        matrix([frac(1, 3), frac(2, 3), frac(1)]))
+      assert.deepStrictEqual(
+        range(frac(1, 3), frac(4, 3), frac(1, 3), true),
+        matrix([frac(1, 3), frac(2, 3), frac(1), frac(4, 3)]))
+    })
+
+    it('should allow mixed number and Fraction', function () {
+      const frac = math.fraction
+      assert.deepStrictEqual(
+        range(1, frac(10, 3)),
+        matrix([frac(1), frac(2), frac(3)]))
+      assert.deepStrictEqual(
+        range(frac(1, 3), 3, true),
+        matrix([frac(1, 3), frac(4, 3), frac(7, 3)]))
+      assert.deepStrictEqual(
+        range(frac(1, 3), 2, frac(1, 3)),
+        matrix([frac(1, 3), frac(2, 3), frac(1), frac(4, 3), frac(5, 3)]))
+      assert.deepStrictEqual(
+        range(0, frac(4, 3), frac(1, 3), true),
+        matrix([frac(0), frac(1, 3), frac(2, 3), frac(1), frac(4, 3)]))
+    })
+
     it('should throw an error in case of invalid type of include end', function () {
       assert.throws(function () { range(0, 10, 2, 0) }, /TypeError: Unexpected type of argument/)
       assert.throws(function () { range(0, 10, 2, 1) }, /TypeError: Unexpected type of argument/)
@@ -129,8 +210,18 @@ describe('range', function () {
     assert.throws(function () { range('invalid range') }, SyntaxError)
   })
 
-  it('should throw an error if called with a unit', function () {
+  it('should throw an error if called with a single unit value', function () {
     assert.throws(function () { range(math.unit('5cm')) }, TypeError)
+  })
+
+  it('should throw an error if called with only two units value', function () {
+    assert.throws(function () { range(math.unit('0cm'), math.unit('5cm')) }, TypeError)
+  })
+
+  it('should throw an error when called with mismatching units', function () {
+    assert.throws(function () {
+      range(math.unit('0cm'), math.unit('2kg'), math.unit('1cm'))
+    }, Error, 'Cannot compare units with different base')
   })
 
   it('should throw an error if called with a complex number', function () {
@@ -151,8 +242,7 @@ describe('range', function () {
     assert.throws(function () { range(1, 2, 3, true, 5) }, /TypeError: Too many arguments/)
   })
 
-  // FIXME: should give the right error
-  it.skip('should not cast a single number or boolean to string', function () {
+  it('should not cast a single number or boolean to string', function () {
     assert.throws(function () { range(2) }, /TypeError: Too few arguments/)
     assert.throws(function () { range(true) }, /TypeError: Unexpected type of argument/)
   })

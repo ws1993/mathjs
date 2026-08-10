@@ -20,7 +20,6 @@ import {
   bitOrNumber,
   bitXorNumber,
   cbrtNumber,
-  ceilNumber,
   combinationsNumber,
   coshNumber,
   cosNumber,
@@ -32,8 +31,6 @@ import {
   divideNumber,
   expm1Number,
   expNumber,
-  fixNumber,
-  floorNumber,
   gammaNumber,
   gcdNumber,
   isIntegerNumber,
@@ -43,6 +40,7 @@ import {
   isZeroNumber,
   lcmNumber,
   leftShiftNumber,
+  lgammaNumber,
   log10Number,
   log1pNumber,
   log2Number,
@@ -51,10 +49,12 @@ import {
   multiplyNumber,
   normNumber,
   notNumber,
+  nthRootNumber,
   orNumber,
   powNumber,
   rightArithShiftNumber,
   rightLogShiftNumber,
+  roundNumber,
   sechNumber,
   secNumber,
   signNumber,
@@ -91,6 +91,7 @@ export { createChain } from './type/chain/function/chain.js'
 // algebra
 export { createResolve } from './function/algebra/resolve.js'
 export { createSimplify } from './function/algebra/simplify.js'
+export { createSimplifyConstant } from './function/algebra/simplifyConstant.js'
 export { createSimplifyCore } from './function/algebra/simplifyCore.js'
 export { createDerivative } from './function/algebra/derivative.js'
 export { createRationalize } from './function/algebra/rationalize.js'
@@ -100,13 +101,14 @@ export const createUnaryMinus = /* #__PURE__ */ createNumberFactory('unaryMinus'
 export const createUnaryPlus = /* #__PURE__ */ createNumberFactory('unaryPlus', unaryPlusNumber)
 export const createAbs = /* #__PURE__ */ createNumberFactory('abs', absNumber)
 export const createAddScalar = /* #__PURE__ */ createNumberFactory('addScalar', addNumber)
+export const createSubtractScalar = /* #__PURE__ */ createNumberFactory('subtractScalar', subtractNumber)
 export const createCbrt = /* #__PURE__ */ createNumberFactory('cbrt', cbrtNumber)
-export const createCeil = /* #__PURE__ */ createNumberFactory('ceil', ceilNumber)
+export { createCeilNumber as createCeil } from './function/arithmetic/ceil.js'
 export const createCube = /* #__PURE__ */ createNumberFactory('cube', cubeNumber)
 export const createExp = /* #__PURE__ */ createNumberFactory('exp', expNumber)
 export const createExpm1 = /* #__PURE__ */ createNumberFactory('expm1', expm1Number)
-export const createFix = /* #__PURE__ */ createNumberFactory('fix', fixNumber)
-export const createFloor = /* #__PURE__ */ createNumberFactory('floor', floorNumber)
+export { createFixNumber as createFix } from './function/arithmetic/fix.js'
+export { createFloorNumber as createFloor } from './function/arithmetic/floor.js'
 export const createGcd = /* #__PURE__ */ createNumberFactory('gcd', gcdNumber)
 export const createLcm = /* #__PURE__ */ createNumberFactory('lcm', lcmNumber)
 export const createLog10 = /* #__PURE__ */ createNumberFactory('log10', log10Number)
@@ -114,7 +116,8 @@ export const createLog2 = /* #__PURE__ */ createNumberFactory('log2', log2Number
 export const createMod = /* #__PURE__ */ createNumberFactory('mod', modNumber)
 export const createMultiplyScalar = /* #__PURE__ */ createNumberFactory('multiplyScalar', multiplyNumber)
 export const createMultiply = /* #__PURE__ */ createNumberFactory('multiply', multiplyNumber)
-export { createNthRootNumber as createNthRoot } from './function/arithmetic/nthRoot.js'
+export const createNthRoot = /* #__PURE__ */
+  createNumberOptionalSecondArgFactory('nthRoot', nthRootNumber)
 export const createSign = /* #__PURE__ */ createNumberFactory('sign', signNumber)
 export const createSqrt = /* #__PURE__ */ createNumberFactory('sqrt', sqrtNumber)
 export const createSquare = /* #__PURE__ */ createNumberFactory('square', squareNumber)
@@ -122,8 +125,10 @@ export const createSubtract = /* #__PURE__ */ createNumberFactory('subtract', su
 export const createXgcd = /* #__PURE__ */ createNumberFactory('xgcd', xgcdNumber)
 export const createDivideScalar = /* #__PURE__ */ createNumberFactory('divideScalar', divideNumber)
 export const createPow = /* #__PURE__ */ createNumberFactory('pow', powNumber)
-export { createRoundNumber as createRound } from './function/arithmetic/round.js'
-export const createLog = /* #__PURE__ */ createNumberFactory('log', logNumber)
+export const createRound = /* #__PURE__ */
+  createNumberOptionalSecondArgFactory('round', roundNumber)
+export const createLog = /* #__PURE__ */
+  createNumberOptionalSecondArgFactory('log', logNumber)
 export const createLog1p = /* #__PURE__ */ createNumberFactory('log1p', log1pNumber)
 export const createAdd = /* #__PURE__ */ createNumberFactory('add', addNumber)
 export { createHypot } from './function/arithmetic/hypot.js'
@@ -170,6 +175,7 @@ export {
 
 // create
 export { createNumber } from './type/number.js'
+export { createBigint } from './type/bigint.js'
 export { createString } from './type/string.js'
 export { createBoolean } from './type/boolean.js'
 export { createParser } from './expression/function/parser.js'
@@ -203,7 +209,7 @@ export const createOr = /* #__PURE__ */ createNumberFactory('or', orNumber)
 export const createXor = /* #__PURE__ */ createNumberFactory('xor', xorNumber)
 
 // matrix
-export { createApply } from './function/matrix/apply.js'
+export { createMapSlices } from './function/matrix/mapSlices.js'
 export { createFilter } from './function/matrix/filter.js'
 export { createForEach } from './function/matrix/forEach.js'
 export { createMap } from './function/matrix/map.js'
@@ -218,8 +224,10 @@ export const createSubset = /* #__PURE__ */ factory('subset', [], () => noSubset
 export { createPartitionSelect } from './function/matrix/partitionSelect.js'
 
 // probability
+export { createBernoulli } from './function/probability/bernoulli.js'
 export const createCombinations = createNumberFactory('combinations', combinationsNumber)
 export const createGamma = createNumberFactory('gamma', gammaNumber)
+export const createLgamma = createNumberFactory('lgamma', lgammaNumber)
 export { createCombinationsWithRep } from './function/probability/combinationsWithRep.js'
 export { createFactorial } from './function/probability/factorial.js'
 export { createMultinomial } from './function/probability/multinomial.js'
@@ -244,19 +252,21 @@ export { createUnequalNumber as createUnequal } from './function/relational/uneq
 
 // special
 export { createErf } from './function/special/erf.js'
-
+export { createZeta } from './function/special/zeta.js'
 // statistics
 export { createMode } from './function/statistics/mode.js'
 export { createProd } from './function/statistics/prod.js'
 export { createMax } from './function/statistics/max.js'
 export { createMin } from './function/statistics/min.js'
 export { createSum } from './function/statistics/sum.js'
+export { createCumSum } from './function/statistics/cumsum.js'
 export { createMean } from './function/statistics/mean.js'
 export { createMedian } from './function/statistics/median.js'
 export { createMad } from './function/statistics/mad.js'
 export { createVariance } from './function/statistics/variance.js'
 export { createQuantileSeq } from './function/statistics/quantileSeq.js'
 export { createStd } from './function/statistics/std.js'
+export { createCorr } from './function/statistics/corr.js'
 
 // string
 export { createFormat } from './function/string/format.js'
@@ -290,7 +300,7 @@ export const createTan = /* #__PURE__ */ createNumberFactory('tan', tanNumber)
 export const createTanh = /* #__PURE__ */ createNumberFactory('tanh', tanhNumber)
 
 // transforms
-export { createApplyTransform } from './expression/transform/apply.transform.js'
+export { createMapSlicesTransform } from './expression/transform/mapSlices.transform.js'
 export { createFilterTransform } from './expression/transform/filter.transform.js'
 export { createForEachTransform } from './expression/transform/forEach.transform.js'
 export { createMapTransform } from './expression/transform/map.transform.js'
@@ -301,6 +311,7 @@ export { createRangeTransform } from './expression/transform/range.transform.js'
 export const createSubsetTransform = /* #__PURE__ */ factory('subset', [], () => noSubset, { isTransformFunction: true })
 export { createStdTransform } from './expression/transform/std.transform.js'
 export { createSumTransform } from './expression/transform/sum.transform.js'
+export { createCumSumTransform } from './expression/transform/cumsum.transform.js'
 export { createVarianceTransform } from './expression/transform/variance.transform.js'
 
 // utils
@@ -312,6 +323,8 @@ export { createHasNumericValue } from './function/utils/hasNumericValue.js'
 export const createIsPositive = /* #__PURE__ */ createNumberFactory('isPositive', isPositiveNumber)
 export const createIsZero = /* #__PURE__ */ createNumberFactory('isZero', isZeroNumber)
 export const createIsNaN = /* #__PURE__ */ createNumberFactory('isNaN', isNaNNumber)
+export { createIsBounded } from './function/utils/isBounded.js'
+export { createIsFinite } from './function/utils/isFinite.js'
 export { createTypeOf } from './function/utils/typeOf.js'
 export { createIsPrime } from './function/utils/isPrime.js'
 export { createNumeric } from './function/utils/numeric.js'
@@ -320,7 +333,11 @@ export { createNumeric } from './function/utils/numeric.js'
 export { createReviver } from './json/reviver.js'
 export { createReplacer } from './json/replacer.js'
 
-// helper function to create a factory function for a function which only needs typed-function
+// helper functions to create a factory function for a function which only needs typed-function
 function createNumberFactory (name, fn) {
   return factory(name, ['typed'], ({ typed }) => typed(fn))
+}
+function createNumberOptionalSecondArgFactory (name, fn) {
+  return factory(
+    name, ['typed'], ({ typed }) => typed({ number: fn, 'number,number': fn }))
 }

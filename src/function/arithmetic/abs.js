@@ -25,33 +25,19 @@ export const createAbs = /* #__PURE__ */ factory(name, dependencies, ({ typed })
    *
    *    sign
    *
-   * @param  {number | BigNumber | Fraction | Complex | Array | Matrix | Unit} x
+   * @param  {number | BigNumber | bigint | Fraction | Complex | Array | Matrix | Unit} x
    *            A number or matrix for which to get the absolute value
-   * @return {number | BigNumber | Fraction | Complex | Array | Matrix | Unit}
+   * @return {number | BigNumber | bigint | Fraction | Complex | Array | Matrix | Unit}
    *            Absolute value of `x`
    */
   return typed(name, {
     number: absNumber,
 
-    Complex: function (x) {
-      return x.abs()
-    },
+    'Complex | BigNumber | Fraction | Unit': x => x.abs(),
 
-    BigNumber: function (x) {
-      return x.abs()
-    },
+    bigint: x => x < 0n ? -x : x,
 
-    Fraction: function (x) {
-      return x.abs()
-    },
-
-    'Array | Matrix': function (x) {
-      // deep map collection, skip zeros since abs(0) = 0
-      return deepMap(x, this, true)
-    },
-
-    Unit: function (x) {
-      return x.abs()
-    }
+    // deep map collection, skip zeros since abs(0) = 0
+    'Array | Matrix': typed.referToSelf(self => x => deepMap(x, self, true))
   })
 })

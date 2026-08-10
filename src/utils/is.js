@@ -12,6 +12,8 @@
 //   for security reasons, so these functions are not exposed in the expression
 //   parser.
 
+import { ObjectWrappingMap } from './map.js'
+
 export function isNumber (x) {
   return typeof x === 'number'
 }
@@ -40,6 +42,10 @@ export function isBigNumber (x) {
   }
 
   return false
+}
+
+export function isBigInt (x) {
+  return typeof x === 'bigint'
 }
 
 export function isComplex (x) {
@@ -121,6 +127,38 @@ export function isObject (x) {
     !isFraction(x))
 }
 
+/**
+ * Returns `true` if the passed object appears to be a Map (i.e. duck typing).
+ *
+ * Methods looked for are `get`, `set`, `keys` and `has`.
+ *
+ * @param {Map | object} object
+ * @returns
+ */
+export function isMap (object) {
+  // We can use the fast instanceof, or a slower duck typing check.
+  // The duck typing method needs to cover enough methods to not be confused with DenseMatrix.
+  if (!object) {
+    return false
+  }
+  return object instanceof Map ||
+    object instanceof ObjectWrappingMap ||
+    (
+      typeof object.set === 'function' &&
+      typeof object.get === 'function' &&
+      typeof object.keys === 'function' &&
+      typeof object.has === 'function'
+    )
+}
+
+export function isPartitionedMap (object) {
+  return isMap(object) && isMap(object.a) && isMap(object.b)
+}
+
+export function isObjectWrappingMap (object) {
+  return isMap(object) && isObject(object.wrappedObject)
+}
+
 export function isNull (x) {
   return x === null
 }
@@ -151,6 +189,24 @@ export function isConditionalNode (x) {
 
 export function isConstantNode (x) {
   return (x && x.isConstantNode === true && x.constructor.prototype.isNode === true) || false
+}
+
+/* Very specialized: returns true for those nodes which in the numerator of
+   a fraction means that the division in that fraction has precedence over implicit
+   multiplication, e.g. -2/3 x parses as (-2/3) x and 3/4 x parses as (3/4) x but
+   6!/8 x parses as 6! / (8x). It is located here because it is shared between
+   parse.js and OperatorNode.js (for parsing and printing, respectively).
+
+   This should *not* be exported from mathjs, unlike most of the tests here.
+   Its name does not start with 'is' to prevent utils/snapshot.js from thinking
+   it should be exported.
+*/
+export function rule2Node (node) {
+  return isConstantNode(node) ||
+    (isOperatorNode(node) &&
+     node.args.length === 1 &&
+     isConstantNode(node.args[0]) &&
+     '-+~'.includes(node.op))
 }
 
 export function isFunctionAssignmentNode (x) {
@@ -185,6 +241,10 @@ export function isRangeNode (x) {
   return (x && x.isRangeNode === true && x.constructor.prototype.isNode === true) || false
 }
 
+export function isRelationalNode (x) {
+  return (x && x.isRelationalNode === true && x.constructor.prototype.isNode === true) || false
+}
+
 export function isSymbolNode (x) {
   return (x && x.isSymbolNode === true && x.constructor.prototype.isNode === true) || false
 }
@@ -197,29 +257,12 @@ export function typeOf (x) {
   const t = typeof x
 
   if (t === 'object') {
-    // JavaScript types
     if (x === null) return 'null'
-    if (Array.isArray(x)) return 'Array'
-    if (x instanceof Date) return 'Date'
-    if (x instanceof RegExp) return 'RegExp'
+    if (isBigNumber(x)) return 'BigNumber' // Special: weird mashup with Decimal
+    if (x.constructor && x.constructor.name) return x.constructor.name
 
-    // math.js types
-    if (isBigNumber(x)) return 'BigNumber'
-    if (isComplex(x)) return 'Complex'
-    if (isFraction(x)) return 'Fraction'
-    if (isMatrix(x)) return 'Matrix'
-    if (isUnit(x)) return 'Unit'
-    if (isIndex(x)) return 'Index'
-    if (isRange(x)) return 'Range'
-    if (isResultSet(x)) return 'ResultSet'
-    if (isNode(x)) return x.type
-    if (isChain(x)) return 'Chain'
-    if (isHelp(x)) return 'Help'
-
-    return 'Object'
+    return 'Object' // just in case
   }
 
-  if (t === 'function') return 'Function'
-
-  return t // can be 'string', 'number', 'boolean', ...
+  return t // can be 'string', 'number', 'boolean', 'function', 'bigint', ...
 }

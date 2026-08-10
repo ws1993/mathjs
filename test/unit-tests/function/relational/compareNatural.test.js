@@ -64,6 +64,12 @@ describe('compareNatural', function () {
     assert.strictEqual(compareNatural(math.add(math.fraction(0.1), math.fraction(0.2)), math.fraction(0.3)).valueOf(), 0) // this would fail with numbers
   })
 
+  it('should compare bigints', function () {
+    assert.strictEqual(compareNatural(3n, 10n), -1)
+    assert.strictEqual(compareNatural(10n, 3n), 1)
+    assert.strictEqual(compareNatural(3n, 3n), 0)
+  })
+
   it('should compare two measures of the same unit', function () {
     assert.strictEqual(compareNatural(unit('100cm'), unit('10inch')), 1)
     assert.strictEqual(compareNatural(unit('99cm'), unit('1m')), -1)
@@ -116,6 +122,12 @@ describe('compareNatural', function () {
     assert.strictEqual(compareNatural(3, bignumber(2)), 1)
     assert.strictEqual(compareNatural(bignumber(2), 2), -1)
     assert.strictEqual(compareNatural(2, bignumber(2)), 1)
+
+    // numbers and bigints
+    assert.strictEqual(compareNatural(2n, 3), -1)
+    assert.strictEqual(compareNatural(3, 2n), 1)
+    assert.strictEqual(compareNatural(2n, 2), -1)
+    assert.strictEqual(compareNatural(2, 2n), 1)
 
     // array, DenseMatrix, SparseMatrix
     assert.strictEqual(compareNatural([2], matrix([2])), -1)
@@ -219,13 +231,13 @@ describe('compareNatural', function () {
     assert.strictEqual(compareNatural({ a: 2, b: { c: 3 } }, { a: 2, b: { c: 4 } }), -1)
   })
 
-  it('should apply configuration option epsilon', function () {
+  it('should apply configuration option relTol', function () {
     const mymath = math.create()
 
     assert.strictEqual(mymath.compareNatural(1, 0.991), 1)
     assert.strictEqual(mymath.compareNatural(mymath.bignumber(1), mymath.bignumber(0.991)).valueOf(), 1)
 
-    mymath.config({ epsilon: 1e-2 })
+    mymath.config({ relTol: 1e-2 })
     assert.strictEqual(mymath.compareNatural(1, 0.991), 0)
     assert.strictEqual(mymath.compareNatural(mymath.bignumber(1), mymath.bignumber(0.991)), 0)
   })

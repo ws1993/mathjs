@@ -12,9 +12,9 @@ export const createMultiplyScalar = /* #__PURE__ */ factory(name, dependencies, 
    *
    * This function does not support collections (Array or Matrix).
    *
-   * @param  {number | BigNumber | Fraction | Complex | Unit} x   First value to multiply
-   * @param  {number | BigNumber | Fraction | Complex} y          Second value to multiply
-   * @return {number | BigNumber | Fraction | Complex | Unit}     Multiplication of `x` and `y`
+   * @param  {number | BigNumber | bigint | Fraction | Complex | Unit} x   First value to multiply
+   * @param  {number | BigNumber | bigint | Fraction | Complex} y          Second value to multiply
+   * @return {number | BigNumber | bigint | Fraction | Complex | Unit}     Multiplication of `x` and `y`
    * @private
    */
   return typed('multiplyScalar', {
@@ -29,25 +29,16 @@ export const createMultiplyScalar = /* #__PURE__ */ factory(name, dependencies, 
       return x.times(y)
     },
 
+    'bigint, bigint': function (x, y) {
+      return x * y
+    },
+
     'Fraction, Fraction': function (x, y) {
       return x.mul(y)
     },
 
-    'number | Fraction | BigNumber | Complex, Unit': function (x, y) {
-      const res = y.clone()
-      res.value = (res.value === null) ? res._normalize(x) : this(res.value, x)
-      return res
-    },
+    'number | Fraction | BigNumber | Complex, Unit': (x, y) => y.multiply(x),
 
-    'Unit, number | Fraction | BigNumber | Complex': function (x, y) {
-      const res = x.clone()
-      res.value = (res.value === null) ? res._normalize(y) : this(res.value, y)
-      return res
-    },
-
-    'Unit, Unit': function (x, y) {
-      return x.multiply(y)
-    }
-
+    'Unit, number | Fraction | BigNumber | Complex | Unit': (x, y) => x.multiply(y)
   })
 })

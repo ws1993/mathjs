@@ -19,6 +19,12 @@ describe('cube', function () {
     assert.strictEqual(cube(0), 0)
   })
 
+  it('should return the cube of a bigint', function () {
+    assert.strictEqual(cube(4n), 64n)
+    assert.strictEqual(cube(-2n), -8n)
+    assert.strictEqual(cube(0n), 0n)
+  })
+
   it('should return the cube of a big number', function () {
     assert.deepStrictEqual(cube(bignumber(4)), bignumber(64))
     assert.deepStrictEqual(cube(bignumber(-2)), bignumber(-8))
@@ -57,12 +63,12 @@ describe('cube', function () {
     assert.throws(function () { cube(null) }, /TypeError: Unexpected type of argument/)
   })
 
-  it('should cube each element in a matrix, array or range', function () {
-    // array, matrix, range
-    // arrays are evaluated element wise
-    assert.deepStrictEqual(cube([2, 3, 4, 5]), [8, 27, 64, 125])
-    assert.deepStrictEqual(cube(matrix([2, 3, 4, 5])), matrix([8, 27, 64, 125]))
-    assert.deepStrictEqual(cube(matrix([[1, 2], [3, 4]])), matrix([[1, 8], [27, 64]]))
+  it('should not operate on a matrix, array or range', function () {
+    assert.throws(() => cube([2, 3, 4, 5]), TypeError)
+    assert.throws(() => cube(matrix([2, 3, 4, 5])), TypeError)
+    assert.deepStrictEqual(math.map([2, 3, 4, 5], cube), [8, 27, 64, 125])
+    assert.deepStrictEqual(math.map(matrix([2, 3, 4, 5]), cube), matrix([8, 27, 64, 125]))
+    assert.deepStrictEqual(math.map(matrix([[1, 2], [3, 4]]), cube), matrix([[1, 8], [27, 64]]))
   })
 
   it('should LaTeX cube', function () {

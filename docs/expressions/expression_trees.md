@@ -20,7 +20,7 @@ In this case, the expression `sqrt(2 + x)` is parsed as:
   ConstantNode   2   x   SymbolNode
 ```
 
-Alternatively, this expression tree can be build by manually creating nodes:
+Alternatively, this expression tree can be built by manually creating nodes:
 
 ```js
 const node1 = new math.ConstantNode(2)
@@ -93,10 +93,10 @@ All nodes have the following methods:
     // returns an array with two entries: two SymbolNodes 'x'
     ```
 
--   `forEach(callback: function) : Node[]`
+-   `forEach(callback: function) : void`
 
     Execute a callback for each of the child nodes of this node. The `callback`
-    function is called as `callback(child: Node, path: string, parent: Node)`.
+    function is called as `callback(child: Node, path: string, parent: Node): void`.
     Parameter `path` is a string containing a relative JSON Path.
 
     See also `traverse`, which is a recursive version of `forEach`.
@@ -207,13 +207,13 @@ All nodes have the following methods:
     transformed.toString() // returns '3 ^ 2 + 5 * 3'
     ```
 
--   `traverse(callback)`
+-   `traverse(callback: function): void`
 
     Recursively traverse all nodes in a node tree. Executes given callback for
     this node and each of its child nodes. Similar to `Array.forEach`, except
     recursive.
     The callback function is a mapping function accepting a node, and returning
-    a replacement for the node or the original node. Function `callback` is
+    nothing. Function `callback` is
     called as `callback(node: Node, path: string, parent: Node)` for every node
     in the tree. Parameter `path` is a string containing a relative JSON Path.
     Example:
@@ -277,13 +277,20 @@ Construction:
 
 ```
 new AccessorNode(object: Node, index: IndexNode)
+new AccessorNode(object: Node, index: IndexNode, optionalChaining: boolean)
 ```
+
+An optional property `optionalChaining` can be provided whether the accessor was 
+written as optional-chaining using `a?.b`, or `a?.["b"]` with bracket notation. 
+Default value is `false`. Forces evaluate to undefined if the given object is 
+undefined or null.
 
 Properties:
 
 - `object: Node`
 - `index: IndexNode`
 - `name: string` (read-only) The function or method name. Returns an empty string when undefined.
+- `optionalChaining: boolean`
 
 Examples:
 
@@ -291,7 +298,8 @@ Examples:
 const node1 = math.parse('a[3]')
 
 const object = new math.SymbolNode('a')
-const index = new math.IndexNode([3])
+const constant3 = new math.ConstantNode(3)
+const index = new math.IndexNode([constant3])
 const node2 = new math.AccessorNode(object, index)
 ```
 
@@ -478,6 +486,11 @@ Properties:
 - `fn: Node | string` (read-only) The object or function name which to invoke.
 - `args: Node[]`
 
+Static functions:
+
+- `FunctionNode.onUndefinedFunction(name: string)`. This function is invoked when an undefined function is evaluated. By default, the function throws an exception "Undefined function x". The function can be overwritten to customize this behavior. See also `SymbolNode.onUndefinedSymbol`.
+
+
 Examples:
 
 ```js
@@ -522,7 +535,7 @@ const three = new math.ConstantNode(3)
 
 const range = new math.RangeNode(one, three)
 const index = new math.IndexNode([range, two])
-const node2 = new math.AccessNode(A, index)
+const node2 = new math.AccessorNode(A, index)
 ```
 
 ### ObjectNode
@@ -690,6 +703,11 @@ new SymbolNode(name: string)
 Properties:
 
 - `name: string`
+
+Static functions:
+
+- `SymbolNode.onUndefinedSymbol(name: string)`. This function is invoked when an undefined symbol is evaluated. By default, the function throws an exception "Undefined symbol x". The function can be overwritten to customize this behavior. See also `FunctionNode.onUndefinedFunction`.
+
 
 Examples:
 

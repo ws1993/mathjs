@@ -124,6 +124,7 @@ export const latexFunctions = {
   expm1: `\\left(e${latexOperators.pow}{\${args[0]}}-1\\right)`,
   fix: { 1: '\\mathrm{${name}}\\left(${args[0]}\\right)' },
   floor: { 1: '\\left\\lfloor${args[0]}\\right\\rfloor' },
+  fraction: { 2: '\\frac{${args[0]}}{${args[1]}}' },
   gcd: '\\gcd\\left(${args}\\right)',
   hypot: '\\hypot\\left(${args}\\right)',
   log: {
@@ -143,7 +144,7 @@ export const latexFunctions = {
     2: undefined // use default template
   },
   nthRoot: { 2: '\\sqrt[${args[1]}]{${args[0]}}' },
-  nthRoots: { 2: '\\{y : $y^{args[1]} = {${args[0]}}\\}' },
+  nthRoots: { 2: '\\{y : y^${args[1]} = {${args[0]}}\\}' },
   pow: { 2: `\\left(\${args[0]}\\right)${latexOperators.pow}{\${args[1]}}` },
   round: {
     1: '\\left\\lfloor${args[0]}\\right\\rceil',
@@ -189,6 +190,7 @@ export const latexFunctions = {
   dot: { 2: '\\left(${args[0]}\\cdot${args[1]}\\right)' },
   expm: { 1: '\\exp\\left(${args[0]}\\right)' },
   inv: { 1: '\\left(${args[0]}\\right)^{-1}' },
+  pinv: { 1: '\\left(${args[0]}\\right)^{+}' },
   sqrtm: { 1: `{\${args[0]}}${latexOperators.pow}{\\frac{1}{2}}` },
   trace: { 1: '\\mathrm{tr}\\left(${args[0]}\\right)' },
   transpose: { 1: `\\left(\${args[0]}\\right)${latexOperators.transpose}` },
@@ -198,6 +200,7 @@ export const latexFunctions = {
   combinationsWithRep: { 2: '\\left(\\!\\!{\\binom{${args[0]}}{${args[1]}}}\\!\\!\\right)' },
   factorial: { 1: `\\left(\${args[0]}\\right)${latexOperators.factorial}` },
   gamma: { 1: '\\Gamma\\left(${args[0]}\\right)' },
+  lgamma: { 1: '\\ln\\Gamma\\left(${args[0]}\\right)' },
 
   // relational
   equal: { 2: `\\left(\${args[0]}${latexOperators.equal}\${args[1]}\\right)` },
@@ -262,6 +265,10 @@ export const latexFunctions = {
     1: '\\mathrm{string}\\left(${args[0]}\\right)'
   },
   bignumber: {
+    0: '0',
+    1: '\\left(${args[0]}\\right)'
+  },
+  bigint: {
     0: '0',
     1: '\\left(${args[0]}\\right)'
   },

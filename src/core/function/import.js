@@ -1,7 +1,6 @@
-import { isBigNumber, isComplex, isFraction, isMatrix, isUnit } from '../../utils/is.js'
+import { isBigNumber, isComplex, isFraction, isMatrix, isObject, isUnit } from '../../utils/is.js'
 import { isFactory, stripOptionalNotation } from '../../utils/factory.js'
 import { hasOwnProperty, lazy } from '../../utils/object.js'
-import { contains } from '../../utils/array.js'
 import { ArgumentsError } from '../../error/ArgumentsError.js'
 
 export function importFactory (typed, load, math, importedFactories) {
@@ -57,6 +56,13 @@ export function importFactory (typed, load, math, importedFactories) {
    *
    *    math.fibonacci(7) // returns 13
    *
+   * History:
+   *
+   *    v0.2   Created
+   *    v0.7   Changed second parameter to an options object
+   *    v2     Dropped support for direct import of a module by name
+   *    v14.2  Add facility for specifying the former name of an import
+   *
    * @param {Object | Array} functions  Object with functions to be imported.
    * @param {Object} [options]          Import options.
    */
@@ -73,7 +79,7 @@ export function importFactory (typed, load, math, importedFactories) {
     function flattenImports (flatValues, value, name) {
       if (Array.isArray(value)) {
         value.forEach(item => flattenImports(flatValues, item))
-      } else if (typeof value === 'object') {
+      } else if (isObject(value) || isModule(value)) {
         for (const name in value) {
           if (hasOwnProperty(value, name)) {
             flattenImports(flatValues, value[name], name)
@@ -82,8 +88,8 @@ export function importFactory (typed, load, math, importedFactories) {
       } else if (isFactory(value) || name !== undefined) {
         const flatName = isFactory(value)
           ? isTransformFunctionFactory(value)
-              ? (value.fn + '.transform') // TODO: this is ugly
-              : value.fn
+            ? (value.fn + '.transform') // TODO: this is ugly
+            : value.fn
           : name
 
         // we allow importing the same function twice if it points to the same implementation
@@ -144,7 +150,7 @@ export function importFactory (typed, load, math, importedFactories) {
       })
     }
 
-    if (isTypedFunction(math[name]) && isTypedFunction(value)) {
+    if (typed.isTypedFunction(math[name]) && typed.isTypedFunction(value)) {
       if (options.override) {
         // give the typed function the right name
         value = typed(name, value.signatures)
@@ -163,7 +169,9 @@ export function importFactory (typed, load, math, importedFactories) {
       return
     }
 
-    if (math[name] === undefined || options.override) {
+    const isDefined = math[name] !== undefined
+    const isValuelessUnit = math.Unit?.isValuelessUnit(name)
+    if ((!isDefined && !isValuelessUnit) || options.override) {
       math[name] = value
       delete importedFactories[name]
 
@@ -235,7 +243,7 @@ export function importFactory (typed, load, math, importedFactories) {
    * @private
    */
   function _importFactory (factory, options, name = factory.fn) {
-    if (contains(name, '.')) {
+    if (name.includes('.')) {
       throw new Error('Factory name should not contain a nested path. ' +
         'Name: ' + JSON.stringify(name))
     }
@@ -253,7 +261,7 @@ export function importFactory (typed, load, math, importedFactories) {
       factory.dependencies
         .map(stripOptionalNotation)
         .forEach(dependency => {
-          if (contains(dependency, '.')) {
+          if (dependency.includes('.')) {
             throw new Error('Factory dependency should not contain a nested path. ' +
               'Name: ' + JSON.stringify(dependency))
           }
@@ -273,14 +281,14 @@ export function importFactory (typed, load, math, importedFactories) {
 
       if (instance && typeof instance.transform === 'function') {
         throw new Error('Transforms cannot be attached to factory functions. ' +
-            'Please create a separate function for it with exports.path="expression.transform"')
+            'Please create a separate function for it with export const path = "expression.transform"')
       }
 
       if (existing === undefined || options.override) {
         return instance
       }
 
-      if (isTypedFunction(existing) && isTypedFunction(instance)) {
+      if (typed.isTypedFunction(existing) && typed.isTypedFunction(instance)) {
         // merge the existing and new typed function
         return typed(existing, instance)
       }
@@ -293,27 +301,38 @@ export function importFactory (typed, load, math, importedFactories) {
       }
     }
 
+    const former = factory.meta?.formerly ?? ''
+    const needsTransform = isTransformFunctionFactory(factory) ||
+      factoryAllowedInExpressions(factory)
+    const withTransform = math.expression.mathWithTransform
+
     // TODO: add unit test with non-lazy factory
     if (!factory.meta || factory.meta.lazy !== false) {
       lazy(namespace, name, resolver)
+      if (former) lazy(namespace, former, resolver)
 
       // FIXME: remove the `if (existing &&` condition again. Can we make sure subset is loaded before subset.transform? (Name collision, and no dependencies between the two)
       if (existing && existingTransform) {
         _deleteTransform(name)
+        if (former) _deleteTransform(former)
       } else {
-        if (isTransformFunctionFactory(factory) || factoryAllowedInExpressions(factory)) {
-          lazy(math.expression.mathWithTransform, name, () => namespace[name])
+        if (needsTransform) {
+          lazy(withTransform, name, () => namespace[name])
+          if (former) lazy(withTransform, former, () => namespace[name])
         }
       }
     } else {
       namespace[name] = resolver()
+      if (former) namespace[former] = namespace[name]
 
       // FIXME: remove the `if (existing &&` condition again. Can we make sure subset is loaded before subset.transform? (Name collision, and no dependencies between the two)
       if (existing && existingTransform) {
         _deleteTransform(name)
+        if (former) _deleteTransform(former)
       } else {
-        if (isTransformFunctionFactory(factory) || factoryAllowedInExpressions(factory)) {
-          lazy(math.expression.mathWithTransform, name, () => namespace[name])
+        if (needsTransform) {
+          lazy(withTransform, name, () => namespace[name])
+          if (former) lazy(withTransform, former, () => namespace[name])
         }
       }
     }
@@ -344,13 +363,8 @@ export function importFactory (typed, load, math, importedFactories) {
         Array.isArray(object)
   }
 
-  /**
-   * Test whether a given thing is a typed-function
-   * @param {*} fn
-   * @return {boolean} Returns true when `fn` is a typed-function
-   */
-  function isTypedFunction (fn) {
-    return typeof fn === 'function' && typeof fn.signatures === 'object'
+  function isModule (object) {
+    return typeof object === 'object' && object[Symbol.toStringTag] === 'Module'
   }
 
   function hasTypedFunctionSignature (fn) {
@@ -362,7 +376,7 @@ export function importFactory (typed, load, math, importedFactories) {
   }
 
   function factoryAllowedInExpressions (factory) {
-    return factory.fn.indexOf('.') === -1 && // FIXME: make checking on path redundant, check on meta data instead
+    return !factory.fn.includes('.') && // FIXME: make checking on path redundant, check on meta data instead
       !hasOwnProperty(unsafe, factory.fn) &&
       (!factory.meta || !factory.meta.isClass)
   }

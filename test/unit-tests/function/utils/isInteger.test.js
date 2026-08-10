@@ -14,7 +14,15 @@ describe('isInteger', function () {
     assert.strictEqual(isInteger(Infinity), false)
     assert.strictEqual(isInteger(-Infinity), false)
     assert.strictEqual(isInteger(NaN), false)
-    assert.strictEqual(isInteger(0.1 + 0.2), false) // TODO: what to do with round off errors?
+    assert.strictEqual(isInteger(0.1 + 0.2), false)
+    assert.strictEqual(isInteger((0.1 + 0.2) * 10), true)
+    assert.strictEqual(isInteger((0.1 + 0.2) * 10 - 3), true)
+  })
+
+  it('should test whether a bigint is an integer', function () {
+    assert.strictEqual(isInteger(2n), true)
+    assert.strictEqual(isInteger(0n), true)
+    assert.strictEqual(isInteger(-3n), true)
   })
 
   it('should test whether a boolean is an integer', function () {
@@ -31,6 +39,8 @@ describe('isInteger', function () {
     assert.strictEqual(isInteger(bignumber(Infinity)), false)
     assert.strictEqual(isInteger(bignumber(-Infinity)), false)
     assert.strictEqual(isInteger(bignumber(NaN)), false)
+    assert.strictEqual(isInteger(bignumber((0.1 + 0.2) * 10)), true)
+    assert.strictEqual(isInteger(bignumber((0.1 + 0.2) * 10 - 3)), true)
   })
 
   it('should test whether a Fraction is an integer', function () {

@@ -6,12 +6,12 @@ import { improveErrorMessage } from './utils/improveErrorMessage.js'
 const DEFAULT_NORMALIZATION = 'unbiased'
 
 const name = 'variance'
-const dependencies = ['typed', 'add', 'subtract', 'multiply', 'divide', 'apply', 'isNaN']
+const dependencies = ['typed', 'add', 'subtract', 'multiply', 'divide', 'mapSlices', 'isNaN']
 
-export const createVariance = /* #__PURE__ */ factory(name, dependencies, ({ typed, add, subtract, multiply, divide, apply, isNaN }) => {
+export const createVariance = /* #__PURE__ */ factory(name, dependencies, ({ typed, add, subtract, multiply, divide, mapSlices, isNaN: mathIsNaN }) => {
   /**
    * Compute the variance of a matrix or a  list with values.
-   * In case of a (multi dimensional) array or matrix, the variance over all
+   * In case of a multidimensional array or matrix, the variance over all
    * elements will be calculated.
    *
    * Additionally, it is possible to compute the variance along the rows
@@ -124,7 +124,7 @@ export const createVariance = /* #__PURE__ */ factory(name, dependencies, ({ typ
       sum = sum === undefined ? multiply(diff, diff) : add(sum, multiply(diff, diff))
     })
 
-    if (isNaN(sum)) {
+    if (mathIsNaN(sum)) {
       return sum
     }
 
@@ -152,7 +152,7 @@ export const createVariance = /* #__PURE__ */ factory(name, dependencies, ({ typ
       if (array.length === 0) {
         throw new SyntaxError('Function variance requires one or more parameters (0 provided)')
       }
-      return apply(array, dim, (x) => _var(x, normalization))
+      return mapSlices(array, dim, (x) => _var(x, normalization))
     } catch (err) {
       throw improveErrorMessage(err, 'variance')
     }

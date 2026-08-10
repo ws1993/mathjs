@@ -158,6 +158,34 @@ describe('DenseMatrix', function () {
     it('should throw an error when called with invalid datatype', function () {
       assert.throws(function () { console.log(new DenseMatrix([], 1)) })
     })
+
+    it('should not mutate the input data when creating a Matrix (1)', function () {
+      const data = [[1, 2]]
+      Object.freeze(data)
+
+      const matrix = new DenseMatrix(data) // should not throw "TypeError: Cannot assign to read only property '0' of object '[object Array]'"
+      assert.deepStrictEqual(matrix.valueOf(), [[1, 2]])
+      assert.notStrictEqual(matrix.valueOf(), data)
+    })
+
+    it('should not mutate the input data when creating a Matrix (2)', function () {
+      const nestedMatrix = new DenseMatrix([1, 2])
+      const data = [nestedMatrix]
+
+      const matrix = new DenseMatrix(data)
+      assert.deepStrictEqual(matrix._data, [[1, 2]])
+      assert.deepStrictEqual(data, [nestedMatrix]) // should not have replaced the nestedMatrix in data itself
+    })
+
+    it('should not mutate the input data operating on a Matrix', function () {
+      const data = [[1, 2]]
+
+      const matrix = new DenseMatrix(data)
+      matrix.set([0, 1], 42)
+
+      assert.deepStrictEqual(matrix, new DenseMatrix([[1, 42]]))
+      assert.deepStrictEqual(data, [[1, 2]])
+    })
   })
 
   describe('size', function () {
@@ -412,6 +440,16 @@ describe('DenseMatrix', function () {
       assert.throws(function () { m.get(math.index(1, 1)) })
       assert.throws(function () { m.get([[1, 1]]) })
     })
+
+    it('should throw an error when getting a value given an index that is not an array', function () {
+      assert.throws(function () {
+        m.get({ length: 1, reduce: () => {} })
+      }, /Error: Array expected for index/)
+
+      assert.throws(function () {
+        m.get(new Date())
+      }, /Error: Array expected for index/)
+    })
   })
 
   describe('set', function () {
@@ -466,10 +504,10 @@ describe('DenseMatrix', function () {
       assert.deepStrictEqual(m.size(), [3, 3])
       assert.deepStrictEqual(m.subset(index(1, 1)), 5)
       assert.deepStrictEqual(m.subset(index(new Range(0, 2), new Range(0, 2))).valueOf(), [[1, 2], [4, 5]])
-      assert.deepStrictEqual(m.subset(index(1, new Range(1, 3))).valueOf(), [[5, 6]])
-      assert.deepStrictEqual(m.subset(index(0, new Range(1, 3))).valueOf(), [[2, 3]])
-      assert.deepStrictEqual(m.subset(index(new Range(1, 3), 1)).valueOf(), [[5], [8]])
-      assert.deepStrictEqual(m.subset(index(new Range(1, 3), 2)).valueOf(), [[6], [9]])
+      assert.deepStrictEqual(m.subset(index(1, new Range(1, 3))).valueOf(), [5, 6])
+      assert.deepStrictEqual(m.subset(index(0, new Range(1, 3))).valueOf(), [2, 3])
+      assert.deepStrictEqual(m.subset(index(new Range(1, 3), 1)).valueOf(), [5, 8])
+      assert.deepStrictEqual(m.subset(index(new Range(1, 3), 2)).valueOf(), [6, 9])
       assert.deepStrictEqual(m.subset(index([0, 1, 2], [1])).valueOf(), [[2], [5], [8]])
 
       // get n-dimensional
@@ -478,9 +516,9 @@ describe('DenseMatrix', function () {
       assert.deepStrictEqual(m.subset(index(new Range(0, 2), new Range(0, 2), new Range(0, 2))).valueOf(), m.valueOf())
       assert.deepStrictEqual(m.subset(index(0, 0, 0)), 1)
       assert.deepStrictEqual(m.subset(index(1, 1, 1)).valueOf(), 8)
-      assert.deepStrictEqual(m.subset(index(1, 1, new Range(0, 2))).valueOf(), [[[7, 8]]])
-      assert.deepStrictEqual(m.subset(index(1, new Range(0, 2), 1)).valueOf(), [[[6], [8]]])
-      assert.deepStrictEqual(m.subset(index(new Range(0, 2), 1, 1)).valueOf(), [[[4]], [[8]]])
+      assert.deepStrictEqual(m.subset(index(1, 1, new Range(0, 2))).valueOf(), [7, 8])
+      assert.deepStrictEqual(m.subset(index(1, new Range(0, 2), 1)).valueOf(), [6, 8])
+      assert.deepStrictEqual(m.subset(index(new Range(0, 2), 1, 1)).valueOf(), [4, 8])
     })
 
     it('should squeeze the output when index contains a scalar', function () {
@@ -490,8 +528,8 @@ describe('DenseMatrix', function () {
 
       m = new DenseMatrix([[1, 2], [3, 4]])
       assert.deepStrictEqual(m.subset(index(1, 1)), 4)
-      assert.deepStrictEqual(m.subset(index(new Range(1, 2), 1)), new DenseMatrix([[4]]))
-      assert.deepStrictEqual(m.subset(index(1, new Range(1, 2))), new DenseMatrix([[4]]))
+      assert.deepStrictEqual(m.subset(index(new Range(1, 2), 1)), new DenseMatrix([4]))
+      assert.deepStrictEqual(m.subset(index(1, new Range(1, 2))), new DenseMatrix([4]))
       assert.deepStrictEqual(m.subset(index(new Range(1, 2), new Range(1, 2))), new DenseMatrix([[4]]))
     })
 
@@ -585,9 +623,6 @@ describe('DenseMatrix', function () {
       m.subset(index(0, new Range(0, 2)), [1, 1]) // 2
       assert.deepStrictEqual(m, new DenseMatrix([[1, 1], [0, 0]]))
 
-      m.subset(index(new Range(0, 2), 0), [2, 2]) // 2
-      assert.deepStrictEqual(m, new DenseMatrix([[2, 1], [2, 0]]))
-
       m = new DenseMatrix([[[0], [0], [0]]]) // 1x3x1
       m.subset(index(0, new Range(0, 3), 0), [1, 2, 3]) // 3
       assert.deepStrictEqual(m, new DenseMatrix([[[1], [2], [3]]]))
@@ -668,7 +703,7 @@ describe('DenseMatrix', function () {
     it('should throw an error in case of dimension mismatch', function () {
       const m = new DenseMatrix([[1, 2, 3], [4, 5, 6]])
       assert.throws(function () { m.subset(index(new Range(0, 2)), [100, 100]) }, /Dimension mismatch/)
-      assert.throws(function () { m.subset(index(new Range(0, 2), new Range(0, 2)), [100, 100]) }, /Dimension mismatch/)
+      assert.throws(function () { m.subset(index(new Range(0, 2), new Range(0, 2)), [100, 100, 100]) }, /Dimension mismatch/)
     })
   })
 
@@ -709,7 +744,7 @@ describe('DenseMatrix', function () {
       const m = new DenseMatrix([[1, 2, 3], [4, 5, 6]])
       const m2 = m.map(
         function (value, index, obj) {
-          return JSON.stringify([value, index, obj === m])
+          return [value, index, obj === m]
         }
       )
 
@@ -717,16 +752,22 @@ describe('DenseMatrix', function () {
         m2.toArray(),
         [
           [
-            '[1,[0,0],true]',
-            '[2,[0,1],true]',
-            '[3,[0,2],true]'
+            [1, [0, 0], true],
+            [2, [0, 1], true],
+            [3, [0, 2], true]
           ],
           [
-            '[4,[1,0],true]',
-            '[5,[1,1],true]',
-            '[6,[1,2],true]'
+            [4, [1, 0], true],
+            [5, [1, 1], true],
+            [6, [1, 2], true]
           ]
         ])
+    })
+
+    it("should throw an error if it the typed function doesn't accept the type of argument", function () {
+      const matrix = new DenseMatrix([1, 'two'])
+      const callback = math.typed({ number: function (value) { return value + 1 } })
+      assert.throws(() => matrix.map(callback), /TypeError: Function map cannot apply callback arguments/)
     })
   })
 
@@ -767,7 +808,7 @@ describe('DenseMatrix', function () {
       const output = []
       m.forEach(
         function (value, index, obj) {
-          output.push(math.clone([value, index, obj === m]))
+          output.push([value, index, obj === m])
         }
       )
       assert.deepStrictEqual(output, [

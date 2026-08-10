@@ -1,5 +1,5 @@
 import assert from 'assert'
-import approx from '../../../../tools/approx.js'
+import { approxEqual, approxDeepEqual } from '../../../../tools/approx.js'
 import math from '../../../../src/defaultInstance.js'
 import { isBigNumber, isFraction } from '../../../../src/utils/is.js'
 import { hasOwnProperty } from '../../../../src/utils/object.js'
@@ -20,10 +20,12 @@ describe('Unit', function () {
       unit1 = new Unit(null, 'kg')
       assert.strictEqual(unit1.value, null)
       assert.strictEqual(unit1.units[0].unit.name, 'g')
+      assert.strictEqual(unit1.valueType(), 'null')
 
       unit1 = new Unit(10, 'Hz')
       assert.strictEqual(unit1.value, 10)
       assert.strictEqual(unit1.units[0].unit.name, 'Hz')
+      assert.strictEqual(unit1.valueType(), 'number')
 
       unit1 = new Unit(9.81, 'kg m/s^2')
       assert.strictEqual(unit1.value, 9.81)
@@ -36,18 +38,21 @@ describe('Unit', function () {
       const unit1 = new Unit(math.fraction(1000, 3), 'cm')
       assert.deepStrictEqual(unit1.value, math.fraction(10, 3))
       assert.strictEqual(unit1.units[0].unit.name, 'm')
+      assert.strictEqual(unit1.valueType(), 'Fraction')
     })
 
     it('should create a unit with BigNumber value', function () {
       const unit1 = new Unit(math.bignumber(5000), 'cm')
       assert.deepStrictEqual(unit1.value, math.bignumber(50))
       assert.strictEqual(unit1.units[0].unit.name, 'm')
+      assert.strictEqual(unit1.valueType(), 'BigNumber')
     })
 
     it('should create a unit with Complex value', function () {
       const unit1 = new Unit(math.complex(500, 600), 'cm')
       assert.deepStrictEqual(unit1.value, math.complex(5, 6))
       assert.strictEqual(unit1.units[0].unit.name, 'm')
+      assert.strictEqual(unit1.valueType(), 'Complex')
     })
 
     it('should create square meter correctly', function () {
@@ -60,6 +65,28 @@ describe('Unit', function () {
       const unit1 = new Unit(0.000000001, 'km3')
       assert.strictEqual(unit1.value, 1)
       assert.strictEqual(unit1.units[0].unit.name, 'm3')
+    })
+
+    it('should create ampere-hour correctly', function () {
+      const n = 1.4
+      const unit1 = new Unit(n, 'Ah')
+      assert.strictEqual(unit1.value, n * 3600)
+      assert.strictEqual(unit1.units[0].unit.name, 'Ah')
+    })
+
+    it('should create a unit from an existing unit', function () {
+      const unit1 = new Unit(null, 'm/s^2')
+      const unit2 = new Unit(5, unit1)
+      assert.strictEqual(unit2.value, 5)
+      assert.strictEqual(unit2.units.length, 2)
+      assert.strictEqual(unit2.units[0].unit.name, 'm')
+      assert.strictEqual(unit2.units[1].unit.name, 's')
+      assert.strictEqual(unit2.units[1].power, -2)
+    })
+
+    it('should create a unitless Unit if second parameter is undefined', function () {
+      const a = new Unit(6)
+      assert(a.dimensions.every(d => d === 0))
     })
 
     it('should ignore properties on Object.prototype', function () {
@@ -211,21 +238,21 @@ describe('Unit', function () {
   describe('toNumber', function () {
     it('should convert a unit to a number', function () {
       const u = new Unit(5000, 'cm')
-      approx.equal(u.toNumber('mm'), 50000)
+      approxEqual(u.toNumber('mm'), 50000)
 
-      approx.equal(new Unit(5.08, 'cm').toNumber('inch'), 2)
+      approxEqual(new Unit(5.08, 'cm').toNumber('inch'), 2)
 
-      approx.equal(new Unit(101325, 'N/m^2').toNumber('lbf/in^2'), 14.6959487763741)
+      approxEqual(new Unit(101325, 'N/m^2').toNumber('lbf/in^2'), 14.6959487763741)
     })
 
     it('should convert a unit with fixed prefix to a number', function () {
       const u1 = new Unit(5000, 'cm')
       const u2 = u1.to('km')
-      approx.equal(u2.toNumber('mm'), 50000)
+      approxEqual(u2.toNumber('mm'), 50000)
 
       const u3 = new Unit(981, 'cm/s^2')
       const u4 = u3.to('km/ms^2')
-      approx.equal(u4.toNumber('m/s^2'), 9.81)
+      approxEqual(u4.toNumber('m/s^2'), 9.81)
     })
 
     it('should convert a unit with fraction to a number', function () {
@@ -277,6 +304,21 @@ describe('Unit', function () {
       assert.strictEqual(u4.fixPrefix, true)
     })
 
+    it('should avoid round-off in offset conversions', function () {
+      assert.strictEqual(math.unit('-218.79 degC').to('degF').toString(), '-361.822 degF')
+      assert.strictEqual(math.unit('-40 degC').to('degF').toString(), '-40 degF')
+      assert.strictEqual(math.unit('32 degF').to('degC').toString(), '0 degC')
+      assert.strictEqual(math.unit('68 degF').to('degC').toString(), '20 degC')
+      assert.strictEqual(math.unit('98.6 degF').to('degC').toString(), '37 degC')
+      assert.strictEqual(math.unit('212 degF').to('degC').toString(), '100 degC')
+    })
+
+    it('should avoid bignumber round-off in offset conversions', function () {
+      assert.deepEqual(math.unit(math.bignumber(32), 'degF').toNumeric('degC'), math.bignumber(0))
+      assert.deepEqual(math.unit(math.bignumber(10.5), 'degC').toNumeric('degF'), math.bignumber(50.9))
+      assert.deepEqual(math.unit(math.bignumber(98.6), 'degF').toNumeric('degC'), math.bignumber(37))
+    })
+
     it('should convert a unit with a fraction', function () {
       const u1 = new Unit(math.fraction(1, 3), 'm')
 
@@ -291,7 +333,7 @@ describe('Unit', function () {
     it('should convert a Complex unit', function () {
       const u1 = new Unit(math.complex(300, 400), 'kPa')
       const u2 = u1.to('lbf/in^2')
-      approx.deepEqual(u2.value, math.complex(300000, 400000))
+      approxDeepEqual(u2.value, math.complex(300000, 400000))
       assert.deepStrictEqual(u2.toString(), '(43.511321319062766 + 58.01509509208368i) lbf / in^2')
     })
 
@@ -358,6 +400,7 @@ describe('Unit', function () {
     it('should convert a unitless quantity', function () {
       const u = Unit.parse('5', { allowNoUnits: true })
       assert.strictEqual(u.toNumeric(), 5)
+      assert.strictEqual(u.toNumeric('mm/m'), 5000)
     })
 
     it('should convert a binary prefixes (1)', function () {
@@ -615,46 +658,57 @@ describe('Unit', function () {
   describe('json', function () {
     it('toJSON', function () {
       assert.deepStrictEqual(new Unit(5, 'cm').toJSON(),
-        { mathjs: 'Unit', value: 5, unit: 'cm', fixPrefix: false })
+        { mathjs: 'Unit', value: 5, unit: 'cm', fixPrefix: false, skipSimp: true })
       assert.deepStrictEqual(new Unit(5, 'cm').to('mm').toJSON(),
-        { mathjs: 'Unit', value: 50, unit: 'mm', fixPrefix: true })
+        { mathjs: 'Unit', value: 50, unit: 'mm', fixPrefix: true, skipSimp: true })
       assert.deepStrictEqual(new Unit(5, 'kN').to('kg m s ^ -2').toJSON(),
-        { mathjs: 'Unit', value: 5000, unit: '(kg m) / s^2', fixPrefix: true })
+        { mathjs: 'Unit', value: 5000, unit: '(kg m) / s^2', fixPrefix: true, skipSimp: true })
       assert.deepStrictEqual(new Unit(math.fraction(0.375), 'cm').toJSON(),
         {
           mathjs: 'Unit',
           value: math.fraction(0.375), // Note that value is not serialized at this point, that will be done by JSON.stringify
           unit: 'cm',
-          fixPrefix: false
+          fixPrefix: false,
+          skipSimp: true
         })
-      approx.deepEqual(new Unit(math.complex(2, 4), 'g').toJSON(),
+      approxDeepEqual(new Unit(math.complex(2, 4), 'g').toJSON(),
         {
           mathjs: 'Unit',
           value: math.complex(2, 4),
           unit: 'g',
-          fixPrefix: false
+          fixPrefix: false,
+          skipSimp: true
+        })
+
+      assert.deepStrictEqual(math.evaluate('2 kg * 3 in^2').toJSON(),
+        {
+          mathjs: 'Unit',
+          value: 6,
+          unit: 'kg in^2',
+          fixPrefix: false,
+          skipSimp: false
         })
 
       const str = JSON.stringify(new Unit(math.fraction(0.375), 'cm'))
-      assert.deepStrictEqual(str, '{"mathjs":"Unit","value":{"mathjs":"Fraction","n":3,"d":8},"unit":"cm","fixPrefix":false}')
+      assert.deepStrictEqual(str, '{"mathjs":"Unit","value":{"mathjs":"Fraction","n":"3","d":"8"},"unit":"cm","fixPrefix":false,"skipSimp":true}')
 
       const cmpx = JSON.stringify(new Unit(math.complex(2, 4), 'g'))
-      assert.strictEqual(cmpx, '{"mathjs":"Unit","value":{"mathjs":"Complex","re":2,"im":4},"unit":"g","fixPrefix":false}')
+      assert.strictEqual(cmpx, '{"mathjs":"Unit","value":{"mathjs":"Complex","re":2,"im":4},"unit":"g","fixPrefix":false,"skipSimp":true}')
     })
 
     it('fromJSON', function () {
       const u1 = new Unit(5, 'cm')
-      const u2 = Unit.fromJSON({ mathjs: 'Unit', value: 5, unit: 'cm', fixPrefix: false })
+      const u2 = Unit.fromJSON({ mathjs: 'Unit', value: 5, unit: 'cm', fixPrefix: false, skipSimp: true })
       assert.ok(u2 instanceof Unit)
       assert.deepStrictEqual(u2, u1)
 
       const u3 = new Unit(5, 'cm').to('mm')
-      const u4 = Unit.fromJSON({ mathjs: 'Unit', value: 50, unit: 'mm', fixPrefix: true })
+      const u4 = Unit.fromJSON({ mathjs: 'Unit', value: 50, unit: 'mm', fixPrefix: true, skipSimp: true })
       assert.ok(u4 instanceof Unit)
       assert.deepStrictEqual(u4, u3)
 
       const u5 = new Unit(5, 'kN').to('kg m/s^2')
-      const u6 = Unit.fromJSON({ mathjs: 'Unit', value: 5000, unit: 'kg m s^-2', fixPrefix: true })
+      const u6 = Unit.fromJSON({ mathjs: 'Unit', value: 5000, unit: 'kg m s^-2', fixPrefix: true, skipSimp: true })
       assert.ok(u6 instanceof Unit)
       assert.deepStrictEqual(u5, u6)
 
@@ -662,7 +716,8 @@ describe('Unit', function () {
         mathjs: 'Unit',
         value: math.fraction(0.375), // Note that value is already a Fraction at this point, that will be done by JSON.parse(str, reviver)
         unit: 'cm',
-        fixPrefix: false
+        fixPrefix: false,
+        skipSimp: true
       })
       assert.deepStrictEqual(u7, new Unit(math.fraction(0.375), 'cm'))
 
@@ -670,9 +725,20 @@ describe('Unit', function () {
         mathjs: 'Unit',
         value: math.complex(2, 4),
         unit: 'g',
-        fixPrefix: false
+        fixPrefix: false,
+        skipSimp: true
       })
       assert.deepStrictEqual(u8, new Unit(math.complex(2, 4), 'g'))
+
+      const u9 = Unit.fromJSON({
+        mathjs: 'Unit',
+        value: 6,
+        unit: 'kg in^2',
+        fixPrefix: false,
+        skipSimp: false
+      })
+      const u10 = math.evaluate('2 kg * 3 in^2')
+      assert.deepStrictEqual(u9, u10)
     })
 
     it('toJSON -> fromJSON should recover an "equal" unit', function () {
@@ -702,8 +768,8 @@ describe('Unit', function () {
     })
 
     it('should format a unit with a bignumber', function () {
-      assert.strictEqual(new Unit(math.bignumber(1).plus(1e-24), 'm').format(), '1.000000000000000000000001 m')
-      assert.strictEqual(new Unit(math.bignumber(1e24).plus(1), 'm').format(), '1.000000000000000000000001 Ym')
+      assert.strictEqual(new Unit(math.bignumber(1).plus(1e-30), 'm').format(), '1.000000000000000000000000000001 m')
+      assert.strictEqual(new Unit(math.bignumber(1e30).plus(1), 'm').format(), '1.000000000000000000000000000001 Qm')
     })
 
     it('should format a unit with a fraction', function () {
@@ -786,37 +852,37 @@ describe('Unit', function () {
       assert.strictEqual(unit1.units[0].prefix.name, 'k')
 
       unit1 = Unit.parse('-5mg')
-      approx.equal(unit1.value, -0.000005)
+      approxEqual(unit1.value, -0.000005)
       assert.strictEqual(unit1.units[0].unit.name, 'g')
       assert.strictEqual(unit1.units[0].prefix.name, 'm')
 
       unit1 = Unit.parse('5.2mg')
-      approx.equal(unit1.value, 0.0000052)
+      approxEqual(unit1.value, 0.0000052)
       assert.strictEqual(unit1.units[0].unit.name, 'g')
       assert.strictEqual(unit1.units[0].prefix.name, 'm')
 
       unit1 = Unit.parse('300 kg/minute')
-      approx.equal(unit1.value, 5)
+      approxEqual(unit1.value, 5)
       assert.strictEqual(unit1.units[0].unit.name, 'g')
       assert.strictEqual(unit1.units[1].unit.name, 'minute')
       assert.strictEqual(unit1.units[0].prefix.name, 'k')
 
       unit1 = Unit.parse('981 cm/s^2')
-      approx.equal(unit1.value, 9.81)
+      approxEqual(unit1.value, 9.81)
       assert.strictEqual(unit1.units[0].unit.name, 'm')
       assert.strictEqual(unit1.units[1].unit.name, 's')
       assert.strictEqual(unit1.units[1].power, -2)
       assert.strictEqual(unit1.units[0].prefix.name, 'c')
 
       unit1 = Unit.parse('981 cm*s^-2')
-      approx.equal(unit1.value, 9.81)
+      approxEqual(unit1.value, 9.81)
       assert.strictEqual(unit1.units[0].unit.name, 'm')
       assert.strictEqual(unit1.units[1].unit.name, 's')
       assert.strictEqual(unit1.units[1].power, -2)
       assert.strictEqual(unit1.units[0].prefix.name, 'c')
 
       unit1 = Unit.parse('8.314 kg m^2 / s^2 / K / mol')
-      approx.equal(unit1.value, 8.314)
+      approxEqual(unit1.value, 8.314)
       assert.strictEqual(unit1.units[0].unit.name, 'g')
       assert.strictEqual(unit1.units[1].unit.name, 'm')
       assert.strictEqual(unit1.units[2].unit.name, 's')
@@ -830,28 +896,28 @@ describe('Unit', function () {
       assert.strictEqual(unit1.units[0].prefix.name, 'k')
 
       unit1 = Unit.parse('5exabytes')
-      approx.equal(unit1.value, 4e19)
+      approxEqual(unit1.value, 4e19)
       assert.strictEqual(unit1.units[0].unit.name, 'bytes')
 
       unit1 = Unit.parse('1 / s')
-      approx.equal(unit1.value, 1)
+      approxEqual(unit1.value, 1)
       assert.strictEqual(unit1.units[0].unit.name, 's')
       assert.strictEqual(unit1.units[0].power, -1)
 
       unit1 = Unit.parse('1/s')
-      approx.equal(unit1.value, 1)
+      approxEqual(unit1.value, 1)
       assert.strictEqual(unit1.units[0].unit.name, 's')
       assert.strictEqual(unit1.units[0].power, -1)
 
       unit1 = Unit.parse('1 * s')
-      approx.equal(unit1.value, 1)
+      approxEqual(unit1.value, 1)
       assert.strictEqual(unit1.units[0].unit.name, 's')
       assert.strictEqual(unit1.units[0].power, 1)
     })
 
     it('should parse expressions with nested parentheses correctly', function () {
       let unit1 = Unit.parse('8.314 kg (m^2 / (s^2 / (K^-1 / mol)))')
-      approx.equal(unit1.value, 8.314)
+      approxEqual(unit1.value, 8.314)
       assert.strictEqual(unit1.units[0].unit.name, 'g')
       assert.strictEqual(unit1.units[1].unit.name, 'm')
       assert.strictEqual(unit1.units[2].unit.name, 's')
@@ -887,7 +953,7 @@ describe('Unit', function () {
     it('should parse units with correct precedence', function () {
       const unit1 = Unit.parse('1  m^3 / kg s^2') // implicit multiplication
 
-      approx.equal(unit1.value, 1)
+      approxEqual(unit1.value, 1)
       assert.strictEqual(unit1.units[0].unit.name, 'm')
       assert.strictEqual(unit1.units[1].unit.name, 'g')
       assert.strictEqual(unit1.units[2].unit.name, 's')
@@ -932,6 +998,17 @@ describe('Unit', function () {
       assert.notDeepStrictEqual(oldMm, newMm)
       assert.deepStrictEqual(newMm, math2.Unit.parse('mm'))
     })
+
+    it('should support prefixes on specific units', function () {
+      assert.deepStrictEqual(Unit.parse('1 nK').toNumeric('K'), 1e-9)
+      assert.deepStrictEqual(Unit.parse('1 ndegR').toNumeric('degR'), 1e-9)
+      assert.deepStrictEqual(Unit.parse('1 ndegF').toNumeric('degF'), 1e-9)
+      assert.deepStrictEqual(Unit.parse('1 ndegC').toNumeric('degC'), 1e-9)
+      assert.deepStrictEqual(Unit.parse('1 nanorankine').toNumeric('rankine'), 1e-9)
+      assert.deepStrictEqual(Unit.parse('1 nanokelvin').toNumeric('kelvin'), 1e-9)
+      assert.deepStrictEqual(Unit.parse('1 nanocelsius').toNumeric('celsius'), 1e-9)
+      assert.deepStrictEqual(Unit.parse('1 nanofahrenheit').toNumeric('fahrenheit'), 1e-9)
+    })
   })
 
   describe('prefixes', function () {
@@ -945,6 +1022,36 @@ describe('Unit', function () {
       assert.strictEqual(Unit.parse('5 bar').toString(), '5 bar')
       assert.strictEqual(Unit.parse('5 millibar').toString(), '5 millibar')
       assert.strictEqual(Unit.parse('5 mbar').toString(), '5 mbar')
+    })
+  })
+
+  describe('metric prefixes adopted by BIPM in 2022: Q(uetta), R(onna), r(onto), and q(uecto)', function () {
+    it('should accept long prefixes', function () {
+      assert.strictEqual(new Unit(math.bignumber(1e30), 'meter').format(), '1 quettameter')
+      assert.strictEqual(new Unit(math.bignumber(1e27), 'meter').format(), '1 ronnameter')
+      assert.strictEqual(new Unit(math.bignumber(1e-27), 'meter').format(), '1 rontometer')
+      assert.strictEqual(new Unit(math.bignumber(1e-30), 'meter').format(), '1 quectometer')
+    })
+
+    it('should accept short prefixes', function () {
+      assert.strictEqual(new Unit(math.bignumber(1e30), 'm').format(), '1 Qm')
+      assert.strictEqual(new Unit(math.bignumber(1e27), 'm').format(), '1 Rm')
+      assert.strictEqual(new Unit(math.bignumber(1e-27), 'm').format(), '1 rm')
+      assert.strictEqual(new Unit(math.bignumber(1e-30), 'm').format(), '1 qm')
+    })
+
+    it('should create square meter correctly', function () {
+      assert.strictEqual(new Unit(math.bignumber(1e60), 'm2').format(), '1 Qm2')
+      assert.strictEqual(new Unit(math.bignumber(1e54), 'm2').format(), '1 Rm2')
+      assert.strictEqual(new Unit(math.bignumber(1e-54), 'm2').format(), '1 rm2')
+      assert.strictEqual(new Unit(math.bignumber(1e-60), 'm2').format(), '1 qm2')
+    })
+
+    it('should create cubic meter correctly', function () {
+      assert.strictEqual(new Unit(math.bignumber(1e90), 'm3').format(), '1 Qm3')
+      assert.strictEqual(new Unit(math.bignumber(1e81), 'm3').format(), '1 Rm3')
+      assert.strictEqual(new Unit(math.bignumber(1e-81), 'm3').format(), '1 rm3')
+      assert.strictEqual(new Unit(math.bignumber(1e-90), 'm3').format(), '1 qm3')
     })
   })
 
@@ -968,6 +1075,28 @@ describe('Unit', function () {
       assert.strictEqual(unit1.multiply(unit2).skipAutomaticSimplification, false)
       assert.strictEqual(unit1.divide(unit2).skipAutomaticSimplification, false)
       assert.strictEqual(unit1.pow(2).skipAutomaticSimplification, false)
+    })
+
+    it('should be able to combine A and h into Ah', function () {
+      // by default, this stays Ah, due to the default unit system
+      const n1 = 2
+      const n2 = 3
+      const unit1 = new Unit(n1, 'A')
+      const unit2 = new Unit(n2, 'h')
+      const unitM = unit1.multiply(unit2).simplify()
+      assert.strictEqual(unitM.units[0].unit.name, 'Ah')
+      assert.strictEqual(unitM.value, n1 * n2 * 3600)
+    })
+
+    it('should be able to combine W and h into J', function () {
+      // by default, this converts to J, due to the default unit system using J for ENERGY
+      const n1 = 2
+      const n2 = 3
+      const unit1 = new Unit(n1, 'W')
+      const unit2 = new Unit(n2, 'h')
+      const unitM = unit1.multiply(unit2).simplify()
+      assert.strictEqual(unitM.units[0].unit.name, 'J')
+      assert.strictEqual(unitM.value, n1 * n2 * 3600)
     })
 
     it('should retain the units of their operands without simplifying', function () {
@@ -1007,6 +1136,41 @@ describe('Unit', function () {
       const unitP = unit5.pow(math.bignumber(-3.5))
       assert(math.isBigNumber(unitP.value))
     })
+
+    it('should multiply/divide units with offsets correctly', function () {
+      const unit1 = new Unit(1, 'm')
+      const unit2 = new Unit(1, 'degC')
+      const unit3 = new Unit(1, 'm degC')
+      unit3.skipAutomaticSimplification = false
+      assert.deepStrictEqual(unit1.multiply(unit2), unit3)
+      const unit4 = new Unit(1, 'in')
+      const unit5 = new Unit(1, 'degF')
+      const unit6 = new Unit(1, 'in/degF')
+      unit6.skipAutomaticSimplification = false
+      assert.deepStrictEqual(unit4.divide(unit5), unit6)
+    })
+
+    it('should multiply valueless units by any supported numeric type', function () {
+      const valuelessF = new Unit(null, 'fahrenheit')
+      assert.strictEqual(valuelessF.multiply(math.bignumber(123)).format(12), '123 fahrenheit')
+      assert.strictEqual(valuelessF.multiply(math.fraction(123, 2)).format(12), '123/2 fahrenheit')
+      assert.strictEqual(valuelessF.multiply(math.complex(123, 123)).format(12), '(123 + 123i) fahrenheit')
+      assert.strictEqual(valuelessF.multiply(123).format(12), '123 fahrenheit')
+    })
+
+    it('should divide valueless units by any supported numeric type', function () {
+      const valuelessF = new Unit(null, 'fahrenheit')
+      assert.strictEqual(valuelessF.divide(math.bignumber(1).div(123)).format(12), '123 fahrenheit')
+      assert.strictEqual(valuelessF.divide(math.fraction(2, 123)).format(12), '123/2 fahrenheit')
+      assert.strictEqual(valuelessF.divide(math.complex(0.25, 0.25)).format(12), '(2 - 2i) fahrenheit')
+      assert.strictEqual(valuelessF.divide(1 / 123).format(12), '123 fahrenheit')
+    })
+
+    // eslint-disable-next-line mocha/no-skipped-tests
+    it.skip('should cancel units in numerator and denominator', function () {
+      assert.strictEqual(math.evaluate('2 J/K/g * 2 g').toString(), '4 J / K')
+      assert.strictEqual(math.evaluate('2 J/K/g * 2K').toString(), '4 J / g')
+    })
   })
 
   describe('plurals', function () {
@@ -1022,12 +1186,12 @@ describe('Unit', function () {
       assert.strictEqual(unit2.units[0].prefix.name, 'kilo')
 
       const unit3 = new Unit(5, 'inches')
-      approx.equal(unit3.value, 0.127)
+      approxEqual(unit3.value, 0.127)
       assert.strictEqual(unit3.units[0].unit.name, 'inches')
       assert.strictEqual(unit3.units[0].prefix.name, '')
 
       const unit4 = new Unit(9.81, 'meters/second^2')
-      approx.equal(unit4.value, 9.81)
+      approxEqual(unit4.value, 9.81)
       assert.strictEqual(unit4.units[0].unit.name, 'meters')
       assert.strictEqual(unit4.units[0].prefix.name, '')
 
@@ -1129,7 +1293,9 @@ describe('Unit', function () {
 
     it('should create a custom unit from a configuration object', function () {
       Unit.createUnitSingle('wiggle', { definition: '4 rad^2/s', offset: 1, prefixes: 'long' })
-      assert.strictEqual(math.evaluate('8000 rad^2/s').toString(), '1 kilowiggle')
+      assert.strictEqual(math.evaluate('8000 rad^2/s').toString(), '2 kilowiggle')
+      Unit.createUnitSingle('wriggle', { definition: '4 rad^2/s', offset: 0, prefixes: 'long' })
+      assert.strictEqual(math.evaluate('2 wriggle to wiggle').toString(), '1 wiggle')
     })
 
     it('should return the new (value-less) unit', function () {
@@ -1226,6 +1392,29 @@ describe('Unit', function () {
     })
   })
 
+  describe('deleteUnit', function () {
+    it('should delete a unit', function () {
+      const math2 = math.create()
+
+      assert.strictEqual(math2.evaluate('5 b').toString(), '5 b')
+      assert.strictEqual(math2.evaluate('5 bytes').toString(), '5 bytes')
+      assert.strictEqual(math2.evaluate('5 byte').toString(), '5 byte') // alias of "bytes"
+
+      math2.Unit.deleteUnit('b')
+      math2.Unit.deleteUnit('bytes')
+      math2.Unit.deleteUnit('byte')
+
+      assert.throws(() => math2.evaluate('5 b').toString(), 'foo')
+      assert.throws(() => math2.evaluate('5 bytes').toString(), 'foo')
+      assert.throws(() => math2.evaluate('5 byte').toString(), 'foo')
+
+      // should not have changed the original math
+      assert.strictEqual(math.evaluate('5 b').toString(), '5 b')
+      assert.strictEqual(math.evaluate('5 bytes').toString(), '5 bytes')
+      assert.strictEqual(math.evaluate('5 byte').toString(), '5 byte')
+    })
+  })
+
   describe('splitUnit', function () {
     it('should split a unit into parts', function () {
       assert.strictEqual((new Unit(1, 'm')).splitUnit(['ft', 'in']).toString(), '3 ft,3.3700787401574765 in')
@@ -1259,6 +1448,7 @@ describe('Unit', function () {
       assert.strictEqual(Unit.parse('3 ft').toSI().format(10), '0.9144 m')
       assert.strictEqual(Unit.parse('0.111 ft^2').toSI().format(10), '0.01031223744 m^2')
       assert.strictEqual(Unit.parse('1 kgf').toSI().toString(), '9.80665 (kg m) / s^2')
+      assert.strictEqual(Unit.parse('300 degC').toSI().toString(), '573.15 K')
     })
 
     it('should return SI units for valueless units', function () {

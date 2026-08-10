@@ -126,7 +126,7 @@ describe('derivative', function () {
     compareString(derivativeWithoutSimplify('nthRoot(6x)', 'x'), '6 * 1 / (2 * sqrt(6 x))')
     compareString(derivativeWithoutSimplify('nthRoot(6x, 3)', 'x'), '1 / 3 * 6 * 1 * (6 x) ^ (1 / 3 - 1)')
 
-    compareString(derivativeWithoutSimplify('nthRoot((6x), (2x))', 'x'), '(6 x) ^ (1 / (2 x)) * ((6 * 1) * 1 / (2 x) / (6 x) + (0 * (2 x) - 1 * (2 * 1)) / (2 x) ^ 2 * log((6 x)))')
+    compareString(derivativeWithoutSimplify('nthRoot((6x), (2x))', 'x'), '(6 x) ^ (1 / (2 x)) * ((6 * 1) * 1 / (2 x) / (6 x) + -1 * (2 * 1) / (2 x) ^ 2 * log((6 x)))')
     compareString(derivativeWithoutSimplify('log((6*x))', 'x'), '(6 * 1) / (6 * x)')
     compareString(derivativeWithoutSimplify('log10((6x))', 'x'), '(6 * 1) / ((6 x) * log(10))')
     compareString(derivativeWithoutSimplify('log((6x), 10)', 'x'), '(6 * 1) / ((6 x) * log(10))')
@@ -159,7 +159,7 @@ describe('derivative', function () {
     compareString(derivativeWithoutSimplify('asech((2x))', 'x'), '-(2 * 1) / ((2 x) * sqrt(1 - (2 x) ^ 2))')
     compareString(derivativeWithoutSimplify('acsch((2x))', 'x'), '-(2 * 1) / (abs((2 x)) * sqrt((2 x) ^ 2 + 1))')
     compareString(derivativeWithoutSimplify('acoth((2x))', 'x'), '-(2 * 1) / (1 - (2 x) ^ 2)')
-    compareString(derivativeWithoutSimplify('abs(2x)', 'x'), '2 * 1 * abs(2 x) / (2 x)')
+    compareString(derivativeWithoutSimplify('abs(2x)', 'x'), '2 * 1 * abs(2 x) / 2 x')
 
     // See power operator tests above
     compareString(derivativeWithoutSimplify('pow(0, 2^x + x^3 + 2)', 'x'), '0')
@@ -202,6 +202,12 @@ describe('derivative', function () {
     compareString(derivative(math.parse('x^2'), math.parse('x')), '2 * x')
   })
 
+  it('should accept string input containing special characters', function () {
+    // NOTE: we use `parse` here on purpose to see whether derivative accepts it
+    compareString(derivative('1 + x', 'x'), '1')
+    compareString(derivative('1 + $x', '$x'), '1')
+  })
+
   describe('expression parser', function () {
     it('should evaluate a derivative containing string value', function () {
       const res = math.evaluate('derivative("x^2", "x")')
@@ -229,56 +235,68 @@ describe('derivative', function () {
     assert.throws(function () {
       const node = new OperatorNode('/', 'myDivide', [c12, c4, x])
       derivative(node, 'x')
-    }, /Error: Operator "\/" is not supported by derivative, or a wrong number of arguments is passed/)
+    }, /Error: Cannot process operator "\/" in derivative: the operator is not supported, undefined, or the number of arguments passed to it are not supported/)
 
     assert.throws(function () {
       const node = new OperatorNode('^', 'myPow', [c12, c4, x])
       derivative(node, 'x')
-    }, /Error: Operator "\^" is not supported by derivative, or a wrong number of arguments is passed/)
+    }, /Error: Cannot process operator "\^" in derivative: the operator is not supported, undefined, or the number of arguments passed to it are not supported/)
+  })
+
+  it('should not mutate the input expression', function () {
+    const expr = math.parse('min(x, y)')
+    assert.strictEqual(expr.toString(), 'min(x, y)')
+
+    assert.throws(() => { math.derivative(expr, 'x') },
+      /Error: Cannot process function "min" in derivative: the function is not supported, undefined, or the number of arguments passed to it are not supported/
+    )
+
+    assert.strictEqual(expr.toString(), 'min(x, y)')
   })
 
   it('should throw error if expressions contain unsupported operators or functions', function () {
-    assert.throws(function () { derivative('x << 2', 'x') }, /Error: Operator "<<" is not supported by derivative/)
-    assert.throws(function () { derivative('subset(x)', 'x') }, /Error: Function "subset" is not supported by derivative/)
-  })
-
-  it('should have controlled behavior on arguments errors', function () {
-    assert.throws(function () {
-      derivative('sqrt()', 'x')
-    }, /TypeError: Too few arguments in function sqrt \(expected: number or Complex or BigNumber or Unit or Array or Matrix or Fraction or string or boolean, index: 0\)/)
-    assert.throws(function () {
-      derivative('sqrt(12, 2x)', 'x')
-    }, /TypeError: Too many arguments in function sqrt \(expected: 1, actual: 2\)/)
+    assert.throws(function () { derivative('x << 2', 'x') }, /Error: Cannot process operator "<<" in derivative: the operator is not supported, undefined, or the number of arguments passed to it are not supported/)
+    assert.throws(function () { derivative('subset(x)', 'x') }, /Error: Cannot process function "subset" in derivative: the function is not supported, undefined, or the number of arguments passed to it are not supported/)
+    assert.throws(function () { derivative('max(x)', 'x') }, /Error: Cannot process function "max" in derivative: the function is not supported, undefined, or the number of arguments passed to it are not supported/)
+    assert.throws(function () { derivative('max(x, y)', 'x') }, /Error: Cannot process function "max" in derivative: the function is not supported, undefined, or the number of arguments passed to it are not supported/)
+    assert.throws(function () { derivative('max(x, 1)', 'x') }, /Error: Cannot process function "max" in derivative: the function is not supported, undefined, or the number of arguments passed to it are not supported/)
+    assert.throws(function () { derivative('add(2,3,x)', 'x') }, /Error: Cannot process function "add" in derivative: the function is not supported, undefined, or the number of arguments passed to it are not supported/)
   })
 
   it('should throw error for incorrect argument types', function () {
     assert.throws(function () {
       derivative('42', '42')
-    }, /TypeError: Unexpected type of argument in function derivative \(expected: string or SymbolNode or number or boolean, actual: ConstantNode, index: 1\)/)
+    }, /TypeError: Invalid variable. Cannot parse "42" into a variable in function derivative/)
 
     assert.throws(function () {
       derivative('[1, 2; 3, 4]', 'x')
-    }, /TypeError: Unexpected type of argument in function constTag \(expected: ConstantNode or FunctionNode or FunctionAssignmentNode or OperatorNode or ParenthesisNode or SymbolNode, actual: ArrayNode, index: 1\)/)
+    }, /TypeError: Unexpected type of argument in function _derivative \(expected: ConstantNode or FunctionNode or FunctionAssignmentNode or OperatorNode or ParenthesisNode or SymbolNode, actual:.*ArrayNode.*, index: 0\)/)
 
     assert.throws(function () {
       derivative('x + [1, 2; 3, 4]', 'x')
-    }, /TypeError: Unexpected type of argument in function constTag \(expected: ConstantNode or FunctionNode or FunctionAssignmentNode or OperatorNode or ParenthesisNode or SymbolNode, actual: ArrayNode, index: 1\)/)
+    }, /TypeError: Unexpected type of argument in function _derivative \(expected: ConstantNode or FunctionNode or FunctionAssignmentNode or OperatorNode or ParenthesisNode or SymbolNode, actual:.*ArrayNode.*, index: 0\)/)
   })
 
   it('should throw error if incorrect number of arguments', function () {
     assert.throws(function () {
       derivative('x + 2')
-    }, /TypeError: Too few arguments in function derivative \(expected: string or SymbolNode or number or boolean, index: 1\)/)
+    }, /TypeError: Too few arguments in function derivative \(expected: string or SymbolNode or boolean, index: 1\)/)
 
     assert.throws(function () {
       derivative('x + 2', 'x', {}, true, 42)
     }, /TypeError: Too many arguments in function derivative \(expected: 3, actual: 5\)/)
   })
 
+  it('should throw error in case of an unknown function', function () {
+    assert.throws(function () {
+      derivative('foo(x)', 'x')
+    }, /Error: Cannot process function "foo" in derivative: the function is not supported, undefined, or the number of arguments passed to it are not supported/)
+  })
+
   it('should LaTeX expressions involving derivative', function () {
-    compareString(math.parse('derivative(x*y,x)').toTex(), '{d\\over dx}\\left[x * y\\right]')
+    compareString(math.parse('derivative(x*y,x)').toTex(), '{d\\over dx}\\left[ x\\cdot y\\right]')
     compareString(math.parse('derivative("x*y",x)').toTex(), '{d\\over dx}\\left[x * y\\right]')
-    compareString(math.parse('derivative(x*y,"x")').toTex(), '{d\\over dx}\\left[x * y\\right]')
+    compareString(math.parse('derivative(x*y,"x")').toTex(), '{d\\over dx}\\left[ x\\cdot y\\right]')
     compareString(math.parse('derivative("x*y","x")').toTex(), '{d\\over dx}\\left[x * y\\right]')
 
     // FIXME: handle toTex of derivative with options as third argument

@@ -5,7 +5,7 @@ const dependencies = ['typed', 'Parser']
 
 export const createParser = /* #__PURE__ */ factory(name, dependencies, ({ typed, Parser }) => {
   /**
-   * Create a parser. The function creates a new `math.Parser` object.
+   * Create a `math.Parser` object that keeps a context of variables and their values, allowing the evaluation of expressions in that context.
    *
    * Syntax:
    *
@@ -28,7 +28,7 @@ export const createParser = /* #__PURE__ */ factory(name, dependencies, ({ typed
    *     parser.evaluate('f(2, 3)')               // 8
    *
    *     // get and set variables and functions
-   *     const x = parser.get('x')                // 7
+   *     const x = parser.get('x')                // 3.5
    *     const f = parser.get('f')                // function
    *     const g = f(3, 2)                        // 9
    *     parser.set('h', 500)

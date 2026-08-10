@@ -76,11 +76,55 @@ describe('security', function () {
   it('should not allow calling Function via Object.assign', function () {
     // TODO: simplify this test case, let it output console.log('hacked...')
     assert.throws(function () {
-      math.evaluate('{}.constructor.assign(cos.constructor, {binding: cos.bind})\n' +
+      math.evaluate(
+        '{}.constructor.assign(cos.constructor, {binding: cos.bind})\n' +
           '{}.constructor.assign(cos.constructor, {bind: null})\n' +
           'f=cos.constructor.binding()("console.log(\'hacked...\')")\n' +
-          'f()')
-    }, /Error: No access to property "bind/)
+          'f()'
+      )
+    }, /Error: No access to property "constructor/)
+  })
+
+  it('should not allow misusing setSafeProperty to set properties on Arrays', function () {
+    assert.throws(function () {
+      const exploit = `
+        constantNode = reviver('',{'mathjs':'ConstantNode','value':1});
+        
+        # get a reference to a raw JavaScript array
+        array = reviver('',{'mathjs':'ArrayNode'}).map().toJSON()['items'];
+        array.push({'name':'a','type':{}});
+        
+        # override params.map to hijack this.params and this.types
+        array.map = f(callback)=callback({'name':{'name':'a','map':f2(callback2)=callback2({},'constructor')},'type':cos});
+        
+        # trigger callback and get the pointer to Function.constructor
+        functionAssignmentNode = reviver('',{'mathjs':'FunctionAssignmentNode','name':'a','params':array,'expr':constantNode});
+        func = functionAssignmentNode.toJSON()['params']['type'];
+        
+        getProcess = func('return process');
+        getProcess()`
+
+      console.log(
+        'Hacked! node.js version:',
+        math.evaluate(exploit).entries[0].version
+      )
+    }, /Error: No access to property "map"/)
+  })
+
+  it('should not allow getting access to constructor via DenseMatrix.get index argument', function () {
+    assert.throws(function () {
+      const exploit = `
+        m = matrix();
+        func = m.get({"length":1,"reduce":f(callback,a)=callback(cos,"constructor")});
+        getProcess = func("return process");
+        getProcess()
+        `
+
+      console.log(
+        'Hacked! node.js version:',
+        math.evaluate(exploit).entries[0].version
+      )
+    }, /Error: Array expected for index/)
   })
 
   it('should not allow disguising forbidden properties with unicode characters', function () {
@@ -215,6 +259,10 @@ describe('security', function () {
           'f=subset(subset([[[0]]],i),index(1,1,1))("console.log(\'hacked...\')");' +
           'f()')
     }, /TypeError: Unexpected type of argument in function subset \(expected: Index, actual: Object, index: 1\)/)
+  })
+
+  it('should not allow accessing proto via dimension', function () {
+    assert.strictEqual(math.evaluate('a=index([0,1]);b=a.dimension("__proto__");b').toString(), '[null]')
   })
 
   it('should not allow using restricted properties via subset (2)', function () {
@@ -362,6 +410,16 @@ describe('security', function () {
     assert.throws(function () { math.evaluate('unit("5cm").valueOf') }, /Cannot access method "valueOf" as a property/)
   })
 
+  it('should not allow accessing constructor via FunctionNode.name', function () {
+    assert.throws(function () {
+      // could execute a nodejs script like "return process.mainModule.require(child_process).execSync(whoami)"
+      const result = math.evaluate('evalFunctionNode=parse("constructor(\'return process.version\')")._compile({},{});' +
+        'f=evalFunctionNode(null,cos);' +
+        'f()')
+      console.warn('Hacked! node.js version:', result.entries[0])
+    }, /No access to property "constructor"/)
+  })
+
   it('should not have access to specific namespaces', function () {
     Object.keys(math.expression.mathWithTransform).forEach(function (name) {
       const value = math.expression.mathWithTransform[name]
@@ -391,7 +449,7 @@ describe('security', function () {
     assert.deepStrictEqual(math.evaluate('chain'), math.unit('chain'))
   })
 
-  it('should not allow polluting the Object prototype via config', () => {
+  it('should not allow polluting the Object prototype via config', function () {
     const obj = {}
     assert.strictEqual(obj.polluted, undefined)
 
@@ -401,7 +459,7 @@ describe('security', function () {
     assert.strictEqual(obj.polluted, undefined)
   })
 
-  it('should not allow polluting the Object prototype via config via the expression parser', () => {
+  it('should not allow polluting the Object prototype via config via the expression parser', function () {
     const obj = {}
     assert.strictEqual(obj.polluted, undefined)
 
@@ -410,7 +468,7 @@ describe('security', function () {
     assert.strictEqual(obj.polluted, undefined)
   })
 
-  it('should not allow polluting the Object prototype by creating an object in the expression parser', () => {
+  it('should not allow polluting the Object prototype by creating an object in the expression parser', function () {
     const obj = {}
     assert.strictEqual(obj.polluted, undefined)
 

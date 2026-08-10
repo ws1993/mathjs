@@ -1,5 +1,4 @@
 import { factory } from '../../utils/factory.js'
-import { deepMap } from '../../utils/collection.js'
 import { acothNumber } from '../../plain/number/index.js'
 
 const name = 'acoth'
@@ -7,10 +6,11 @@ const dependencies = ['typed', 'config', 'Complex', 'BigNumber']
 
 export const createAcoth = /* #__PURE__ */ factory(name, dependencies, ({ typed, config, Complex, BigNumber }) => {
   /**
-   * Calculate the hyperbolic arccotangent of a value,
+   * Calculate the inverse hyperbolic tangent of a value,
    * defined as `acoth(x) = atanh(1/x) = (ln((x+1)/x) + ln(x/(x-1))) / 2`.
    *
-   * For matrices, the function is evaluated element wise.
+   * To avoid confusion with the matrix inverse hyperbolic tangent, this
+   * function does not apply to matrices.
    *
    * Syntax:
    *
@@ -18,14 +18,14 @@ export const createAcoth = /* #__PURE__ */ factory(name, dependencies, ({ typed,
    *
    * Examples:
    *
-   *    math.acoth(0.5)       // returns 0.8047189562170503
+   *    math.acoth(0.5)     // returns 0.5493061443340548 - 1.5707963267948966i
    *
    * See also:
    *
    *    acsch, asech
    *
-   * @param {number | Complex | Array | Matrix} x  Function input
-   * @return {number | Complex | Array | Matrix} Hyperbolic arccotangent of x
+   * @param {number | BigNumber | Complex} x  Function input
+   * @return {number | BigNumber | Complex} Hyperbolic arccotangent of x
    */
   return typed(name, {
     number: function (x) {
@@ -41,10 +41,6 @@ export const createAcoth = /* #__PURE__ */ factory(name, dependencies, ({ typed,
 
     BigNumber: function (x) {
       return new BigNumber(1).div(x).atanh()
-    },
-
-    'Array | Matrix': function (x) {
-      return deepMap(x, this)
     }
   })
 })

@@ -26,7 +26,7 @@ describe('RelationalNode', function () {
   })
 
   it('should throw an error when calling without new operator', function () {
-    assert.throws(function () { RelationalNode() }, SyntaxError)
+    assert.throws(function () { RelationalNode() }, TypeError)
   })
 
   it('should throw an error when creating without arguments', function () {
@@ -219,6 +219,30 @@ describe('RelationalNode', function () {
     const n = new RelationalNode(['smaller', 'larger', 'smallerEq', 'largerEq', 'equal', 'unequal'], [one, three, two, three, two, two, one])
 
     assert.strictEqual(n.toString({ handler: customFunction }), 'one smaller three larger two smallerEq three largerEq two equal two unequal one')
+  })
+
+  it('should stringify a RelationalNode with custom toHTML', function () {
+    // Also checks if the custom functions get passed on to the children
+    const customFunction = function (node, options) {
+      if (node.type === 'RelationalNode') {
+        let ret = node.params[0].toHTML(options)
+        for (let i = 0; i < node.conditionals.length; i++) {
+          ret += ' ' + node.conditionals[i] + ' ' + node.params[i + 1].toHTML(options)
+        }
+        return ret
+      } else if (node.type === 'ConstantNode') {
+        switch (node.value) {
+          case 1: return 'one'
+          case 2: return 'two'
+          case 3: return 'three'
+          default: return 'NaN'
+        }
+      }
+    }
+
+    const n = new RelationalNode(['smaller', 'larger', 'smallerEq', 'largerEq', 'equal', 'unequal'], [one, three, two, three, two, two, one])
+
+    assert.strictEqual(n.toHTML({ handler: customFunction }), 'one smaller three larger two smallerEq three largerEq two equal two unequal one')
   })
 
   it('toJSON and fromJSON', function () {

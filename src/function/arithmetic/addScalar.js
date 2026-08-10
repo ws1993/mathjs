@@ -12,9 +12,9 @@ export const createAddScalar = /* #__PURE__ */ factory(name, dependencies, ({ ty
    *
    * This function does not support collections (Array or Matrix).
    *
-   * @param  {number | BigNumber | Fraction | Complex | Unit} x   First value to add
-   * @param  {number | BigNumber | Fraction | Complex} y          Second value to add
-   * @return {number | BigNumber | Fraction | Complex | Unit}     Sum of `x` and `y`
+   * @param  {number | BigNumber | bigint | Fraction | Complex | Unit} x   First value to add
+   * @param  {number | BigNumber | bigint | Fraction | Complex} y          Second value to add
+   * @return {number | BigNumber | bigint | Fraction | Complex | Unit}     Sum of `x` and `y`
    * @private
    */
   return typed(name, {
@@ -29,19 +29,28 @@ export const createAddScalar = /* #__PURE__ */ factory(name, dependencies, ({ ty
       return x.plus(y)
     },
 
+    'bigint, bigint': function (x, y) {
+      return x + y
+    },
+
     'Fraction, Fraction': function (x, y) {
       return x.add(y)
     },
 
-    'Unit, Unit': function (x, y) {
-      if (x.value === null || x.value === undefined) throw new Error('Parameter x contains a unit with undefined value')
-      if (y.value === null || y.value === undefined) throw new Error('Parameter y contains a unit with undefined value')
+    'Unit, Unit': typed.referToSelf(self => (x, y) => {
+      if (x.value === null || x.value === undefined) {
+        throw new Error('Parameter x contains a unit with undefined value')
+      }
+      if (y.value === null || y.value === undefined) {
+        throw new Error('Parameter y contains a unit with undefined value')
+      }
       if (!x.equalBase(y)) throw new Error('Units do not match')
 
       const res = x.clone()
-      res.value = this(res.value, y.value)
+      res.value =
+        typed.find(self, [res.valueType(), y.valueType()])(res.value, y.value)
       res.fixPrefix = false
       return res
-    }
+    })
   })
 })

@@ -39,6 +39,12 @@ export const createComplex = /* #__PURE__ */ factory(name, dependencies, ({ type
    *
    *    bignumber, boolean, index, matrix, number, string, unit
    *
+   * History:
+   *
+   *    v0.5   Created
+   *    v0.16  Added conversion from BigNumber
+   *    v6     Added conversion from Fraction
+   *
    * @param {* | Array | Matrix} [args]
    *            Arguments specifying the real and imaginary part of the complex number
    * @return {Complex | Array | Matrix} Returns a complex value
@@ -89,8 +95,6 @@ export const createComplex = /* #__PURE__ */ factory(name, dependencies, ({ type
       throw new Error('Expected object with properties (re and im) or (r and phi) or (abs and arg)')
     },
 
-    'Array | Matrix': function (x) {
-      return deepMap(x, this)
-    }
+    'Array | Matrix': typed.referToSelf(self => x => deepMap(x, self))
   })
 })

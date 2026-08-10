@@ -1,6 +1,6 @@
 import assert from 'assert'
-import math from '../../../../../src/defaultInstance.js'
 import Fraction from 'fraction.js'
+import math from '../../../../../src/defaultInstance.js'
 
 describe('fraction', function () {
   it('should create a fraction', function () {
@@ -11,10 +11,43 @@ describe('fraction', function () {
     equalFraction(math.fraction(null), new Fraction(0))
   })
 
+  it('should create a fraction from an irrational number', function () {
+    equalFraction(math.fraction(math.pi), new Fraction(11985110, 3814979))
+  })
+
+  it('should fail to create a fraction in case of non-integer quotient', function () {
+    assert.throws(() => math.fraction(4, 5.1), /Parameters must be integer/)
+    assert.throws(() => math.fraction(62.8, 10), /Parameters must be integer/)
+    assert.throws(() => math.fraction(Infinity, 3), /Parameters must be integer/)
+  })
+
+  it('should create a fraction from a quotient regardless of integrality', function () {
+    equalFraction(math.divide(math.fraction(4), math.fraction(5.1)),
+      math.fraction(40, 51))
+  })
+
   it('should create a fraction from a BigNumber', function () {
     const b = math.bignumber(2).div(3)
     const f = math.fraction(b)
     equalFraction(f, new Fraction('0.6666666666666666666666666666666666666666666666666666666666666667'))
+  })
+
+  it('should create a fraction from a bigint', function () {
+    equalFraction(math.fraction(42), new Fraction(42))
+    equalFraction(math.fraction(42n), new Fraction(42))
+    equalFraction(math.fraction(1n, 3n), new Fraction(1, 3))
+    equalFraction(math.fraction(1n, 3), new Fraction(1, 3))
+    equalFraction(math.fraction(1, 3n), new Fraction(1, 3))
+  })
+
+  it('should convert the number value of a Unit to Fraction', function () {
+    equalFraction(math.fraction(math.unit(0.5, 'cm')).toNumeric('cm'), new Fraction(1, 2))
+    equalFraction(math.fraction(math.unit(10, 'inch')).toNumeric('cm'), new Fraction(127, 5))
+  })
+
+  it('should convert the BigNumber value of a Unit to Fraction', function () {
+    equalFraction(math.fraction(math.unit(math.bignumber(0.5), 'cm')).toNumeric('cm'), new Fraction(1, 2))
+    equalFraction(math.fraction(math.unit(math.bignumber(10), 'inch')).toNumeric('cm'), new Fraction(127, 5))
   })
 
   it('should clone a fraction', function () {
@@ -47,6 +80,13 @@ describe('fraction', function () {
     assert.throws(function () { math.fraction(Infinity) }, /Error: Infinity cannot be represented as a fraction/)
     assert.throws(function () { math.fraction(-Infinity) }, /Error: -Infinity cannot be represented as a fraction/)
     assert.throws(function () { math.fraction(NaN) }, /Error: NaN cannot be represented as a fraction/)
+  })
+
+  it('should show a Latex Fraction as one over another', function () {
+    const node1 = math.parse('fraction(1,2)')
+    assert.strictEqual(node1.toTex(), '\\frac{1}{2}')
+    const node2 = math.parse('fraction(a,b)')
+    assert.strictEqual(node2.toTex(), '\\frac{ a}{\\mathrm{b}}')
   })
 })
 

@@ -1,6 +1,7 @@
 import { isCollection, isMatrix } from './is.js'
 import { IndexError } from '../error/IndexError.js'
-import { arraySize } from './array.js'
+import { arraySize, deepMap as arrayDeepMap, deepForEach as arrayDeepForEach } from './array.js'
+import { _switch } from './switch.js'
 
 /**
  * Test whether an array contains collections
@@ -26,17 +27,9 @@ export function containsCollections (array) {
  */
 export function deepForEach (array, callback) {
   if (isMatrix(array)) {
-    array = array.valueOf()
-  }
-
-  for (let i = 0, ii = array.length; i < ii; i++) {
-    const value = array[i]
-
-    if (Array.isArray(value)) {
-      deepForEach(value, callback)
-    } else {
-      callback(value)
-    }
+    array.forEach(x => callback(x), false, true)
+  } else {
+    arrayDeepForEach(array, callback, true)
   }
 }
 
@@ -53,13 +46,18 @@ export function deepForEach (array, callback) {
  * @return {Array | Matrix} res
  */
 export function deepMap (array, callback, skipZeros) {
-  if (array && (typeof array.map === 'function')) {
-    // TODO: replace array.map with a for loop to improve performance
-    return array.map(function (x) {
-      return deepMap(x, callback, skipZeros)
-    })
+  if (!skipZeros) {
+    if (isMatrix(array)) {
+      return array.map(x => callback(x), false, true)
+    } else {
+      return arrayDeepMap(array, callback, true)
+    }
+  }
+  const skipZerosCallback = (x) => x === 0 ? x : callback(x)
+  if (isMatrix(array)) {
+    return array.map(x => skipZerosCallback(x), false, true)
   } else {
-    return callback(array)
+    return arrayDeepMap(array, skipZerosCallback, true)
   }
 }
 
@@ -80,7 +78,7 @@ export function reduce (mat, dim, callback) {
   }
 
   if (isMatrix(mat)) {
-    return mat.create(_reduce(mat.valueOf(), dim, callback))
+    return mat.create(_reduce(mat.valueOf(), dim, callback), mat.datatype())
   } else {
     return _reduce(mat, dim, callback)
   }
@@ -119,27 +117,6 @@ function _reduce (mat, dim, callback) {
     }
     return ret
   }
-}
-
-/**
- * Transpose a matrix
- * @param {Array} mat
- * @returns {Array} ret
- * @private
- */
-function _switch (mat) {
-  const I = mat.length
-  const J = mat[0].length
-  let i, j
-  const ret = []
-  for (j = 0; j < J; j++) {
-    const tmp = []
-    for (i = 0; i < I; i++) {
-      tmp.push(mat[i][j])
-    }
-    ret.push(tmp)
-  }
-  return ret
 }
 
 // TODO: document function scatter

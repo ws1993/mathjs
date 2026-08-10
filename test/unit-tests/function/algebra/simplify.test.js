@@ -4,6 +4,7 @@ import assert from 'assert'
 import math from '../../../../src/defaultInstance.js'
 
 const expLibrary = []
+// eslint-disable-next-line mocha/no-exports
 export function simplifyAndCompare (left, right, rules, scope, opt, stringOpt) {
   expLibrary.push(left)
   let simpLeft
@@ -47,11 +48,92 @@ describe('simplify', function () {
     assert.strictEqual(math.simplify(left).evaluate(scope), math.parse(right).evaluate(scope))
   }
 
+  describe('wildcard types', function () {
+    it('should match constants (\'c\' and \'cl\') correctly', function () {
+      // c, cl - ConstantNode
+      simplifyAndCompare('1', '5', [{ l: 'c', r: '5' }])
+      simplifyAndCompare('-1', '-5', [{ l: 'c', r: '5' }])
+      simplifyAndCompare('a', 'a', [{ l: 'c', r: '5' }])
+      simplifyAndCompare('2 * a', '5 * a', [{ l: 'c', r: '5' }])
+
+      simplifyAndCompare('1', '5', [{ l: 'cl', r: '5' }])
+      simplifyAndCompare('-1', '-5', [{ l: 'cl', r: '5' }])
+      simplifyAndCompare('a', 'a', [{ l: 'cl', r: '5' }])
+      simplifyAndCompare('2 * a', '5 * a', [{ l: 'cl', r: '5' }])
+    })
+
+    it('should match variables (\'v\') correctly', function () {
+      // v - Non-ConstantNode
+      simplifyAndCompare('1', '1', [{ l: 'v', r: '5' }])
+      simplifyAndCompare('-1', '5', [{ l: 'v', r: '5' }])
+      simplifyAndCompare('a', '5', [{ l: 'v', r: '5' }])
+      simplifyAndCompare('2 * a', '5', [{ l: 'v', r: '5' }])
+    })
+
+    it('should match variable literals (\'vl\') correctly', function () {
+      // vl - Variable
+      simplifyAndCompare('1', '1', [{ l: 'vl', r: '5' }])
+      simplifyAndCompare('-1', '-1', [{ l: 'vl', r: '5' }])
+      simplifyAndCompare('a', '5', [{ l: 'vl', r: '5' }])
+      simplifyAndCompare('2 * a', '2 * 5', [{ l: 'vl', r: '5' }])
+    })
+
+    it('should match decimal literals (\'cd\') correctly', function () {
+      // cd - Number
+      simplifyAndCompare('1', '5', [{ l: 'cd', r: '5' }])
+      simplifyAndCompare('-1', '5', [{ l: 'cd', r: '5' }])
+      simplifyAndCompare('a', 'a', [{ l: 'cd', r: '5' }])
+      simplifyAndCompare('2 * a', '5 * a', [{ l: 'cd', r: '5' }])
+    })
+
+    it('should match non-decimals (\'vd\') correctly', function () {
+      // vd - Non-number
+      simplifyAndCompare('1', '1', [{ l: 'vd', r: '5' }])
+      simplifyAndCompare('-1', '-1', [{ l: 'vd', r: '5' }])
+      simplifyAndCompare('a', '5', [{ l: 'vd', r: '5' }])
+      simplifyAndCompare('2 * a', '5', [{ l: 'vd', r: '5' }])
+    })
+
+    it('should match constant expressions (\'ce\') correctly', function () {
+      // ce - Constant Expression
+      simplifyAndCompare('1', '5', [{ l: 'ce', r: '5' }])
+      simplifyAndCompare('-1', '5', [{ l: 'ce', r: '5' }])
+      simplifyAndCompare('a', 'a', [{ l: 'ce', r: '5' }])
+      simplifyAndCompare('2 * a', '5 * a', [{ l: 'ce', r: '5' }])
+      simplifyAndCompare('2 ^ 32 + 3', '5', [{ l: 'ce', r: '5' }])
+      simplifyAndCompare('2 ^ 32 + x', '5 + x', [{ l: 'ce', r: '5' }])
+      simplifyAndCompare('2 ^ 32 + pi', '5', [{ l: 'ce', r: '5' }], { pi: math.pi })
+    })
+
+    it('should match variable expressions (\'ve\') correctly', function () {
+      // ve - Variable Expression
+      simplifyAndCompare('1', '1', [{ l: 've', r: '5' }])
+      simplifyAndCompare('-1', '-1', [{ l: 've', r: '5' }])
+      simplifyAndCompare('a', '5', [{ l: 've', r: '5' }])
+      simplifyAndCompare('2 * a', '2 * 5', [{ l: 've', r: '5' }])
+      simplifyAndCompare('2 ^ 32 + 3', '2 ^ 32 + 3', [{ l: 've', r: '5' }])
+      simplifyAndCompare('2 ^ 32 + x', '2 ^ 32 + 5', [{ l: 've', r: '5' }])
+      simplifyAndCompare('2 ^ 32 + pi', '2 ^ 32 + 3.141592653589793', [{ l: 've', r: '5' }], { pi: math.pi })
+    })
+
+    it('should correctly separate constant and variable expressions', function () {
+      simplifyAndCompare('2 * a ^ 5 * 8', '5', [{ l: 'ce * ve', r: '5' }])
+      simplifyAndCompare('2 * a ^ 5 * 8 + 3', '5 + 3', [{ l: 'ce * ve', r: '5' }])
+    })
+  })
+
   it('should not change the value of the function', function () {
     simplifyAndCompareEval('3+2/4+2*8', '39/2')
     simplifyAndCompareEval('x+1+x', '2x+1', { x: 7 })
     simplifyAndCompareEval('x+1+2x', '3x+1', { x: 7 })
     simplifyAndCompareEval('x^2+x-3+x^2', '2x^2+x-3', { x: 7 })
+  })
+
+  it('should place constants at the end of expressions unless subtraction takes priority', function () {
+    simplifyAndCompare('2 + x', 'x + 2')
+    simplifyAndCompare('-2 + x', 'x - 2')
+    simplifyAndCompare('-2 + -x', '-x - 2')
+    simplifyAndCompare('2 + -x', '2 - x')
   })
 
   it('should simplify exponents', function () {
@@ -76,7 +158,7 @@ describe('simplify', function () {
     simplifyAndCompare('foo("0xffff")', 'foo("0xffff")')
     simplifyAndCompare('"1234"', '"1234"')
     simplifyAndCompare('concat("a","b")', '"ab"')
-    simplifyAndCompare('size(concat("A","4/2"))', '[4]')
+    simplifyAndCompare('matrix(size(concat("A","4/2")))', '[4]')
     simplifyAndCompare('string(4/2)', '"2"')
     simplifyAndCompare('2+number("2")', '4')
   })
@@ -146,7 +228,7 @@ describe('simplify', function () {
     simplifyAndCompare('zeros(2,1)', '[0;0]')
     simplifyAndCompare('ones(3)', '[1,1,1]')
     simplifyAndCompare('identity(2)', '[1,0;0,1]')
-    simplifyAndCompare('sqrt([1,4,9])', '[1,2,3]')
+    simplifyAndCompare('floor([1.1,4.4,9.9])', '[1,4,9]')
     simplifyAndCompare('det([2,1;-1,3])', '7')
     simplifyAndCompare("[1,2;3,4]'", '[1,3;2,4]')
   })
@@ -159,10 +241,10 @@ describe('simplify', function () {
     function doubleIt (x) { return x + x }
     const f = new math.FunctionNode(new math.SymbolNode('doubleIt'), [new math.SymbolNode('value')])
     assert.strictEqual(f.toString(), 'doubleIt(value)')
-    assert.strictEqual(f.evaluate({ doubleIt: doubleIt, value: 4 }), 8)
+    assert.strictEqual(f.evaluate({ doubleIt, value: 4 }), 8)
     const fsimplified = math.simplifyCore(f)
     assert.strictEqual(fsimplified.toString(), 'doubleIt(value)')
-    assert.strictEqual(fsimplified.evaluate({ doubleIt: doubleIt, value: 4 }), 8)
+    assert.strictEqual(fsimplified.evaluate({ doubleIt, value: 4 }), 8)
   })
 
   it('should handle immediately invoked function assignments', function () {
@@ -181,7 +263,7 @@ describe('simplify', function () {
     simplifyAndCompare('2 - -3', '5')
     let e = math.parse('2 - -3')
     e = math.simplifyCore(e)
-    assert.strictEqual(e.toString(), '5') // simplifyCore
+    assert.strictEqual(e.toString(), '2 + 3') // simplifyCore
     simplifyAndCompare('x - -x', '2*x')
     e = math.parse('x - -x')
     e = math.simplifyCore(e)
@@ -195,6 +277,13 @@ describe('simplify', function () {
     assert.deepStrictEqual(bigmath.simplify('1/2 + 11111111111111111111').evaluate(), bigmath.evaluate('11111111111111111111.5'))
     assert.deepStrictEqual(bigmath.simplify('1/3 + 11111111111111111111').evaluate(), bigmath.evaluate('11111111111111111111.33333333333333333333333333333333333333333333'))
     assert.deepStrictEqual(bigmath.simplify('3 + 1 / 11111111111111111111').evaluate(), bigmath.evaluate('3 + 1 / 11111111111111111111'))
+  })
+
+  it('should preserve the value of bigints', function () {
+    const bigmath = math.create({ number: 'bigint' })
+    assert.deepStrictEqual(bigmath.simplify('70000000000000000123 + 1').evaluate(), 70000000000000000124n)
+    assert.deepStrictEqual(bigmath.simplify('70000000000000000123 + 5e3').evaluate(), 70000000000000010000)
+    assert.deepStrictEqual(bigmath.simplify('70000000000000000123 + bigint(5000)').evaluate(), 70000000000000005123n)
   })
 
   it('should not change the value of numbers when converting to fractions (1)', function () {
@@ -212,7 +301,7 @@ describe('simplify', function () {
     simplifyAndCompareEval('1 - 1e-10', '1 - 1e-10')
     simplifyAndCompareEval('1 + 1e-10', '1 + 1e-10')
     simplifyAndCompareEval('1e-10 / 2', '1e-10 / 2')
-    simplifyAndCompareEval('(1e-5)^2', '(1e-5)^2')
+    simplifyAndCompareEval('(1e-5)^2', '1e-10')
     simplifyAndCompareEval('min(1, -1e-10)', '-1e-10')
     simplifyAndCompareEval('max(1e-10, -1)', '1e-10')
   })
@@ -231,6 +320,19 @@ describe('simplify', function () {
     simplifyAndCompare('x*y - y*x', '0')
     simplifyAndCompare('x^2*y^3*z - y*z*y*x^2*y', '0')
     simplifyAndCompare('x^2*y^3*z - y*z*x^2*y', 'x^2*z*(y^3-y^2)')
+  })
+
+  it('can simplify with functions as well as operators', function () {
+    simplifyAndCompare('add(x,x)', '2*x')
+    simplifyAndCompare('multiply(x,2)+x', '3*x')
+    simplifyAndCompare('add(2*add(x,1), x+1)', '3*(x + 1)')
+    simplifyAndCompare('multiply(2, x+1) + add(x,1)', '3*(x + 1)')
+    simplifyAndCompare('add(y*pow(x,2), multiply(2,x^2))', 'x^2*(y+2)')
+    simplifyAndCompare('add(x*y, multiply(y,x))', '2*x*y')
+    simplifyAndCompare('subtract(multiply(x,y), multiply(y,x))', '0')
+    simplifyAndCompare('pow(x,2)*multiply(y^3, z) - multiply(y,z,y,x^2,y)', '0')
+    simplifyAndCompare('subtract(multiply(x^2, pow(y,3))*z, y*multiply(z,x^2)*y)',
+      'x^2*z*(y^3-y^2)')
   })
 
   it('should collect separated like terms', function () {
@@ -264,6 +366,11 @@ describe('simplify', function () {
     simplifyAndCompare('x*2*x', '2*x^2')
   })
 
+  it('should preserve seperated numerical factors', function () {
+    simplifyAndCompare('2 * (2 * x + y)', '2 * (2 * x + y)')
+    simplifyAndCompare('-2 * (-2 * x + y)', '-(2 * (y - 2 * x))') // Failed before introduction of vd in #1915
+  })
+
   it('should handle nested exponentiation', function () {
     simplifyAndCompare('(x^2)^3', 'x^6')
     simplifyAndCompare('(x^y)^z', 'x^(y*z)')
@@ -273,7 +380,7 @@ describe('simplify', function () {
   it('should not run into an infinite recursive loop', function () {
     simplifyAndCompare('2n - 1', '2 n - 1')
     simplifyAndCompare('16n - 1', '16 n - 1')
-    simplifyAndCompare('16n / 1', '16 * n')
+    simplifyAndCompare('16n / 1', '16 n')
     simplifyAndCompare('8 / 5n', 'n * 8 / 5')
     simplifyAndCompare('8n - 4n', '4 * n')
     simplifyAndCompare('8 - 4n', '8 - 4 * n')
@@ -323,6 +430,11 @@ describe('simplify', function () {
     simplifyAndCompare('x-0', 'x')
   })
 
+  it('should remove + before -', function () {
+    assert.strictEqual(math.simplify('y + (-x*b) + a * -5').toString(), 'y - 5 * a - x * b')
+    assert.strictEqual(math.simplify('+3y + (-2z) + x * (-3)').toString(), '3 y - 3 * x - 2 * z')
+  })
+
   it('options parameters', function () {
     simplifyAndCompare('0.1*x', 'x/10')
     simplifyAndCompare('0.1*x', 'x/10', math.simplify.rules, {}, { exactFractions: true })
@@ -338,18 +450,78 @@ describe('simplify', function () {
     simplifyAndCompare('100.8', '100.8', math.simplify.rules, {}, { exactFractions: true, fractionsLimit: 100 })
   })
 
-  it('should respect context changes to operator properties', function () {
+  describe('should respect context changes to operator properties', function () {
     const optsNCM = { context: { multiply: { commutative: false } } }
-    simplifyAndCompare('x*y+y*x', 'x*y+y*x', {}, optsNCM)
-    simplifyAndCompare('x*y-y*x', 'x*y-y*x', {}, optsNCM)
-    simplifyAndCompare('x*5', 'x*5', {}, optsNCM)
-    simplifyAndCompare('x*y*x^(-1)', 'x*y*x^(-1)', {}, optsNCM)
-    simplifyAndCompare('x*y/x', 'x*y*x^(-1)', {}, optsNCM)
-    simplifyAndCompare('x*y*(1/x)', 'x*y*x^(-1)', {}, optsNCM)
+    const optsNCA = { context: { add: { commutative: false } } }
 
-    const optsNAA = { context: { add: { associative: false } } }
-    simplifyAndCompare(
-      'x + (-x+y)', 'x + (y-x)', {}, optsNAA, { parenthesis: 'all' })
+    it('should not apply typically applicable rules (for non-commutative contexts)', function () {
+      // i.e. rule 'n3*n1+n3*n2-> n3*(n1+n2)' cannot apply (in this context operands cannot be rearranged)
+      simplifyAndCompare('x*y+y*x', 'x*y+y*x', {}, optsNCM)
+      // i.e. initial temporary/re-arrangement rules 'n-n1->n+-n1','-v->v*-1' do not apply -
+      // resulting in this expr. not being simplified to '0'
+      simplifyAndCompare('x*y-y*x', 'x*y-y*x', {}, optsNCM)
+      // Constants not shifted to left..
+      simplifyAndCompare('x*5', 'x*5', {}, optsNCM)
+      // i.e. 'x*x^-1' not permitted to ultimately cancel-out via 'n*n^n1->n^(n1+1)'
+      simplifyAndCompare('x*y*x^(-1)', 'x*y*x^(-1)', {}, optsNCM)
+      simplifyAndCompare('x*y/x', 'x*y*x^(-1)', {}, optsNCM)
+      simplifyAndCompare('x*y*(1/x)', 'x*y*x^(-1)', {}, optsNCM)
+      // 'n+n->2*n' & 'n1*n3+n2*n3 -> (n1+n2)*n3' cannot apply for NCA
+      simplifyAndCompare('z+2+z', 'z+2+z', {}, optsNCA)
+      simplifyAndCompare('2*z+3+2*z', '2*z+3+2*z', {}, optsNCA)
+    })
+
+    it('should still validly apply (term factoring and collection) rules', function () {
+      // exponent-factorings
+      simplifyAndCompare('x*x', 'x^2', {}, optsNCM)
+      simplifyAndCompare('x^2*x', 'x^3', {}, optsNCM)
+      simplifyAndCompare('x*x^2', 'x^3', {}, optsNCM)
+      simplifyAndCompare('x^3*x^2', 'x^5', {}, optsNCM)
+      simplifyAndCompare('x^(2y)*x^(3z)', 'x^(2y+3z)', {}, optsNCM)
+      // term collection
+      simplifyAndCompare('y+y', '2*y', {}, optsNCA)
+      simplifyAndCompare('y+2*y', '3*y', {}, optsNCM)
+      simplifyAndCompare('2*y+y', '3*y', {}, optsNCM)
+      simplifyAndCompare('2*y+4*y', '6*y', {}, optsNCM)
+
+      // other factorings
+      const optsNCANCM = {
+        context: {
+          add: { commutative: false },
+          multiply: { commutative: false }
+        }
+      }
+      simplifyAndCompare('4+4*b', '4*(1+b)', {}, optsNCANCM)
+      simplifyAndCompare('4*b+4', '4*(b+1)', {}, optsNCANCM)
+    })
+
+    it('rules still apply for non-commutative \'multi-arg.\' expressions', function () {
+      // ('n*n->n^2')
+      simplifyAndCompare('n*n*3', 'n^2*3', {}, optsNCM)
+      simplifyAndCompare('3*n*n', '3*n^2', {}, optsNCM)
+      simplifyAndCompare('3*n*n*3', '3*n^2*3', {}, optsNCM)
+      // (the following two also subsequently apply 'n^n1*n->n^(n1+1)')
+      simplifyAndCompare('3*n*n*n*3', '3*n^3*3', {}, optsNCM)
+      simplifyAndCompare('3*3*n*n*n*3', '9*n^3*3', {}, optsNCM)
+      simplifyAndCompare('(w*z)*n*n*3', 'w*z*n^2*3', {}, optsNCM)
+      simplifyAndCompare('2*n*n*3*n*n*4', '2*n^2*3*n^2*4', {}, optsNCM) // 'double wedged', +applied >1x
+      // ('v*(v*n1+n2) ->  v^2*n1+v*n2')
+      simplifyAndCompare('w*x*(x*y+z)', 'w*(x^2*y+x*z)', {}, optsNCM)
+      simplifyAndCompare('w*x*(x*y+z)*w', 'w*(x^2*y+x*z)*w', {}, optsNCM)
+      //  'n+n -> 2*n'
+      simplifyAndCompare('x+x+3', '2*x+3', {}, optsNCA)
+      simplifyAndCompare('3+x+x', '3+2*x', {}, optsNCA)
+      simplifyAndCompare('4+x+x+4', '4+2*x+4', {}, optsNCA)
+      simplifyAndCompare('4+x+x+5+x+x+6', '4+2*x+5+2*x+6', {}, optsNCA) // 'double wedged', +applied >1x
+      // 'n+n -> 2*n'  &  'n3*n1 + n3*n2 -> n3*(n1+n2)'
+      simplifyAndCompare('5+x+x+x+x+5', '5+4*x+5', {}, optsNCA)
+    })
+
+    it('should respect absence of associativity', function () {
+      const optsNAA = { context: { add: { associative: false } } }
+      simplifyAndCompare(
+        'x + (-x+y)', 'x + (y-x)', {}, optsNAA, { parenthesis: 'all' })
+    })
   })
 
   it('performs other simplifications in unrelated contexts', function () {
@@ -375,6 +547,34 @@ describe('simplify', function () {
     assert.strictEqual(f.toString({ implicit: 'hide' }), '2 x')
     const simplified = math.simplify(f)
     assert.strictEqual(simplified.toString({ implicit: 'hide' }), '2 x')
+  })
+
+  it('should offer differentiation for constants of either sign', function () {
+    // Mostly just an alternative formatting preference
+    // Allows for basic constant fractions to be kept separate from a variable expressions
+    // see https://github.com/josdejong/mathjs/issues/1406
+    const rules = math.simplify.rules.slice()
+    const index = rules.findIndex(rule => (rule.s ? rule.s.split('->')[0].trim() : rule.l) === 'n*(n1/n2)')
+    rules.splice(
+      index, 1,
+      {
+        s: 'cd*(cd1/cd2) -> (cd*cd1)/cd2',
+        assuming: { multiply: { associative: true } }
+      },
+      {
+        s: 'n*(n1/vd2) -> (n*n1)/vd2',
+        assuming: { multiply: { associative: true } }
+      },
+      {
+        s: 'n*(vd1/n2) -> (n*vd1)/n2',
+        assuming: { multiply: { associative: true } }
+      }
+    )
+    assert.strictEqual(math.simplify('(1 / 2) * a', rules).toString({ parenthesis: 'all' }), '(1 / 2) * a')
+    assert.strictEqual(math.simplify('-(1 / 2) * a', rules).toString({ parenthesis: 'all' }), '((-1) / 2) * a')
+    assert.strictEqual(math.simplify('(1 / 2) * 3', rules).toString({ parenthesis: 'all' }), '3 / 2')
+    assert.strictEqual(math.simplify('(1 / x) * a', rules).toString({ parenthesis: 'all' }), 'a / x')
+    assert.strictEqual(math.simplify('-(1 / x) * a', rules).toString({ parenthesis: 'all' }), '-(a / x)')
   })
 
   describe('expression parser', function () {
@@ -404,6 +604,7 @@ describe('simplify', function () {
       assert.strictEqual(res.toString(), '30 * x')
     })
 
+    // eslint-disable-next-line mocha/no-skipped-tests
     it.skip('should compute and simplify derivatives (3)', function () {
       // TODO: this requires the + operator to support Nodes,
       //       i.e.   math.add(5, math.parse('2')) => return an OperatorNode
@@ -473,7 +674,8 @@ describe('simplify', function () {
     const positiveContext = { context: math.simplify.positiveContext }
     simplifyAndCompare('x/x', 'x/x', {}, realContext)
     simplifyAndCompare('x/x', '1', {}, positiveContext)
-    simplifyAndCompare('x-x', 'x-x', {}, positiveContext)
+    simplifyAndCompare('x-x', '0', {}, positiveContext)
+    simplifyAndCompare('x-2*x', 'x-2*x', {}, positiveContext)
     simplifyAndCompare('+x+abs(x)', '2*x', {}, positiveContext)
 
     const id = x => x
@@ -494,16 +696,20 @@ describe('simplify', function () {
       }
     }
 
+    // Simplify actually increases accuracy when it uses fractions, so we
+    // disable that to get equality in these tests:
+    realContext.exactFractions = false
+    positiveContext.exactFractions = false
     for (const textExpr of expLibrary) {
       const expr = math.parse(textExpr)
       const realex = math.simplify(expr, {}, realContext)
       const posex = math.simplify(expr, {}, positiveContext)
-      assertAlike(expr.evaluate(zeroes), realex.evaluate(zeroes))
-      assertAlike(expr.evaluate(negones), realex.evaluate(negones))
-      assertAlike(expr.evaluate(ones), realex.evaluate(ones))
-      assertAlike(expr.evaluate(twos), realex.evaluate(twos))
-      assertAlike(expr.evaluate(ones), posex.evaluate(ones))
-      assertAlike(expr.evaluate(twos), posex.evaluate(twos))
+      assertAlike(realex.evaluate(zeroes), expr.evaluate(zeroes))
+      assertAlike(realex.evaluate(negones), expr.evaluate(negones))
+      assertAlike(realex.evaluate(ones), expr.evaluate(ones))
+      assertAlike(realex.evaluate(twos), expr.evaluate(twos))
+      assertAlike(posex.evaluate(ones), expr.evaluate(ones))
+      assertAlike(posex.evaluate(twos), expr.evaluate(twos))
     }
     // Make sure at least something is not equal
     const expr = math.parse('x/x')

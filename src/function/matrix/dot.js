@@ -34,8 +34,8 @@ export const createDot = /* #__PURE__ */ factory(name, dependencies, ({ typed, a
   })
 
   function _validateDim (x, y) {
-    const xSize = _size(x)
-    const ySize = _size(y)
+    const xSize = size(x)
+    const ySize = size(y)
     let xLen, yLen
 
     if (xSize.length === 1) {
@@ -64,20 +64,20 @@ export const createDot = /* #__PURE__ */ factory(name, dependencies, ({ typed, a
     const N = _validateDim(a, b)
 
     const adata = isMatrix(a) ? a._data : a
-    const adt = isMatrix(a) ? a._datatype : undefined
+    const adt = isMatrix(a) ? a._datatype || a.getDataType() : undefined
 
     const bdata = isMatrix(b) ? b._data : b
-    const bdt = isMatrix(b) ? b._datatype : undefined
+    const bdt = isMatrix(b) ? b._datatype || b.getDataType() : undefined
 
     // are these 2-dimensional column vectors? (as opposed to 1-dimensional vectors)
-    const aIsColumn = _size(a).length === 2
-    const bIsColumn = _size(b).length === 2
+    const aIsColumn = size(a).length === 2
+    const bIsColumn = size(b).length === 2
 
     let add = addScalar
     let mul = multiplyScalar
 
     // process data types
-    if (adt && bdt && adt === bdt && typeof adt === 'string') {
+    if (adt && bdt && adt === bdt && typeof adt === 'string' && adt !== 'mixed') {
       const dt = adt
       // find signatures that matches (dt, dt)
       add = typed.find(addScalar, [dt, dt])
@@ -157,10 +157,5 @@ export const createDot = /* #__PURE__ */ factory(name, dependencies, ({ typed, a
     }
 
     return c
-  }
-
-  // TODO remove this once #1771 is fixed
-  function _size (x) {
-    return isMatrix(x) ? x.size() : size(x)
   }
 })

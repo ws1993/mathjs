@@ -10,7 +10,7 @@ const dependencies = [
   '?on',
   'config',
   'addScalar',
-  'subtract',
+  'subtractScalar',
   'multiplyScalar',
   'divideScalar',
   'pow',
@@ -30,7 +30,7 @@ export const createUnitClass = /* #__PURE__ */ factory(name, dependencies, ({
   on,
   config,
   addScalar,
-  subtract,
+  subtractScalar,
   multiplyScalar,
   divideScalar,
   pow,
@@ -46,11 +46,14 @@ export const createUnitClass = /* #__PURE__ */ factory(name, dependencies, ({
   Fraction
 }) => {
   const toNumber = number
+  const fixPrefixDefault = false
+  const skipAutomaticSimplificationDefault = true
+
   /**
    * A unit can be constructed in the following ways:
    *
-   *     const a = new Unit(value, name)
-   *     const b = new Unit(null, name)
+   *     const a = new Unit(value, valuelessUnit)
+   *     const b = new Unit(null, valuelessUnit)
    *     const c = Unit.parse(str)
    *
    * Example usage:
@@ -63,9 +66,9 @@ export const createUnitClass = /* #__PURE__ */ factory(name, dependencies, ({
    * @class Unit
    * @constructor Unit
    * @param {number | BigNumber | Fraction | Complex | boolean} [value]  A value like 5.2
-   * @param {string} [name]   A unit name like "cm" or "inch", or a derived unit of the form: "u1[^ex1] [u2[^ex2] ...] [/ u3[^ex3] [u4[^ex4]]]", such as "kg m^2/s^2", where each unit appearing after the forward slash is taken to be in the denominator. "kg m^2 s^-2" is a synonym and is also acceptable. Any of the units can include a prefix.
+   * @param {string | Unit} valuelessUnit   A unit without value. Can have prefix, like "cm"
    */
-  function Unit (value, name) {
+  function Unit (value, valuelessUnit) {
     if (!(this instanceof Unit)) {
       throw new Error('Constructor must be called with the new operator')
     }
@@ -73,42 +76,40 @@ export const createUnitClass = /* #__PURE__ */ factory(name, dependencies, ({
     if (!(value === null || value === undefined || isNumeric(value) || isComplex(value))) {
       throw new TypeError('First parameter in Unit constructor must be number, BigNumber, Fraction, Complex, or undefined')
     }
-    if (name !== undefined && (typeof name !== 'string' || name === '')) {
-      throw new TypeError('Second parameter in Unit constructor must be a string')
-    }
 
-    if (name !== undefined) {
-      const u = Unit.parse(name)
-      this.units = u.units
-      this.dimensions = u.dimensions
-    } else {
-      this.units = [
-        {
-          unit: UNIT_NONE,
-          prefix: PREFIXES.NONE, // link to a list with supported prefixes
-          power: 0
-        }
-      ]
-      this.dimensions = []
-      for (let i = 0; i < BASE_DIMENSIONS.length; i++) {
-        this.dimensions[i] = 0
-      }
-    }
-
-    this.value = (value !== undefined && value !== null) ? this._normalize(value) : null
-
-    this.fixPrefix = false // if true, function format will not search for the
+    this.fixPrefix = fixPrefixDefault // if true, function format will not search for the
     // best prefix but leave it as initially provided.
     // fixPrefix is set true by the method Unit.to
 
     // The justification behind this is that if the constructor is explicitly called,
-    // the caller wishes the units to be returned exactly as he supplied.
-    this.skipAutomaticSimplification = true
+    // the caller wishes the units to be returned exactly as supplied.
+    this.skipAutomaticSimplification = skipAutomaticSimplificationDefault
+
+    if (valuelessUnit === undefined) {
+      this.units = []
+      this.dimensions = BASE_DIMENSIONS.map(x => 0)
+    } else if (typeof valuelessUnit === 'string') {
+      const u = Unit.parse(valuelessUnit)
+      this.units = u.units
+      this.dimensions = u.dimensions
+    } else if (isUnit(valuelessUnit) && valuelessUnit.value === null) {
+      // clone from valuelessUnit
+      this.fixPrefix = valuelessUnit.fixPrefix
+      this.skipAutomaticSimplification = valuelessUnit.skipAutomaticSimplification
+      this.dimensions = valuelessUnit.dimensions.slice(0)
+      this.units = valuelessUnit.units.map(u => Object.assign({}, u))
+    } else {
+      throw new TypeError('Second parameter in Unit constructor must be a string or valueless Unit')
+    }
+
+    this.value = this._normalize(value)
   }
 
   /**
    * Attach type information
    */
+  Object.defineProperty(Unit, 'name', { value: 'Unit' })
+  Unit.prototype.constructor = Unit
   Unit.prototype.type = 'Unit'
   Unit.prototype.isUnit = true
 
@@ -368,7 +369,7 @@ export const createUnitClass = /* #__PURE__ */ factory(name, dependencies, ({
       unit.units.push({
         unit: res.unit,
         prefix: res.prefix,
-        power: power
+        power
       })
       for (let i = 0; i < BASE_DIMENSIONS.length; i++) {
         unit.dimensions[i] += (res.unit.dimensions[i] || 0) * power
@@ -465,9 +466,20 @@ export const createUnitClass = /* #__PURE__ */ factory(name, dependencies, ({
   }
 
   /**
+   * Return the type of the value of this unit
+   *
+   * @memberof Unit
+   * @return {string} type of the value of the unit
+   */
+  Unit.prototype.valueType = function () {
+    return typeOf(this.value)
+  }
+
+  /**
    * Return whether the unit is derived (such as m/s, or cm^2, but not N)
    * @memberof Unit
    * @return {boolean} True if the unit is derived
+   * @private
    */
   Unit.prototype._isDerived = function () {
     if (this.units.length === 0) {
@@ -484,35 +496,20 @@ export const createUnitClass = /* #__PURE__ */ factory(name, dependencies, ({
    * @private
    */
   Unit.prototype._normalize = function (value) {
-    let unitValue, unitOffset, unitPower, unitPrefixValue
-    let convert
-
     if (value === null || value === undefined || this.units.length === 0) {
       return value
-    } else if (this._isDerived()) {
-      // This is a derived unit, so do not apply offsets.
-      // For example, with J kg^-1 degC^-1 you would NOT want to apply the offset.
-      let res = value
-      convert = Unit._getNumberConverter(typeOf(value)) // convert to Fraction or BigNumber if needed
-
-      for (let i = 0; i < this.units.length; i++) {
-        unitValue = convert(this.units[i].unit.value)
-        unitPrefixValue = convert(this.units[i].prefix.value)
-        unitPower = convert(this.units[i].power)
-        res = multiplyScalar(res, pow(multiplyScalar(unitValue, unitPrefixValue), unitPower))
-      }
-
-      return res
-    } else {
-      // This is a single unit of power 1, like kg or degC
-      convert = Unit._getNumberConverter(typeOf(value)) // convert to Fraction or BigNumber if needed
-
-      unitValue = convert(this.units[0].unit.value)
-      unitOffset = convert(this.units[0].unit.offset)
-      unitPrefixValue = convert(this.units[0].prefix.value)
-
-      return multiplyScalar(addScalar(value, unitOffset), multiplyScalar(unitValue, unitPrefixValue))
     }
+    let res = value
+    const convert = Unit._getNumberConverter(typeOf(value)) // convert to Fraction or BigNumber if needed
+
+    for (let i = 0; i < this.units.length; i++) {
+      const unitValue = convert(this.units[i].unit.value)
+      const unitPrefixValue = convert(this.units[i].prefix.value)
+      const unitPower = convert(this.units[i].power)
+      res = multiplyScalar(res, pow(multiplyScalar(unitValue, unitPrefixValue), unitPower))
+    }
+
+    return res
   }
 
   /**
@@ -524,40 +521,20 @@ export const createUnitClass = /* #__PURE__ */ factory(name, dependencies, ({
    * @private
    */
   Unit.prototype._denormalize = function (value, prefixValue) {
-    let unitValue, unitOffset, unitPower, unitPrefixValue
-    let convert
-
     if (value === null || value === undefined || this.units.length === 0) {
       return value
-    } else if (this._isDerived()) {
-      // This is a derived unit, so do not apply offsets.
-      // For example, with J kg^-1 degC^-1 you would NOT want to apply the offset.
-      // Also, prefixValue is ignored--but we will still use the prefix value stored in each unit, since kg is usually preferable to g unless the user decides otherwise.
-      let res = value
-      convert = Unit._getNumberConverter(typeOf(value)) // convert to Fraction or BigNumber if needed
-
-      for (let i = 0; i < this.units.length; i++) {
-        unitValue = convert(this.units[i].unit.value)
-        unitPrefixValue = convert(this.units[i].prefix.value)
-        unitPower = convert(this.units[i].power)
-        res = divideScalar(res, pow(multiplyScalar(unitValue, unitPrefixValue), unitPower))
-      }
-
-      return res
-    } else {
-      // This is a single unit of power 1, like kg or degC
-      convert = Unit._getNumberConverter(typeOf(value)) // convert to Fraction or BigNumber if needed
-
-      unitValue = convert(this.units[0].unit.value)
-      unitPrefixValue = convert(this.units[0].prefix.value)
-      unitOffset = convert(this.units[0].unit.offset)
-
-      if (prefixValue === undefined || prefixValue === null) {
-        return subtract(divideScalar(divideScalar(value, unitValue), unitPrefixValue), unitOffset)
-      } else {
-        return subtract(divideScalar(divideScalar(value, unitValue), prefixValue), unitOffset)
-      }
     }
+    let res = value
+    const convert = Unit._getNumberConverter(typeOf(value)) // convert to Fraction or BigNumber if needed
+
+    for (let i = 0; i < this.units.length; i++) {
+      const unitValue = convert(this.units[i].unit.value)
+      const unitPrefixValue = convert(this.units[i].prefix.value)
+      const unitPower = convert(this.units[i].power)
+      res = divideScalar(res, pow(multiplyScalar(unitValue, unitPrefixValue), unitPower))
+    }
+
+    return res
   }
 
   /**
@@ -573,10 +550,7 @@ export const createUnitClass = /* #__PURE__ */ factory(name, dependencies, ({
     if (hasOwnProperty(UNITS, str)) {
       const unit = UNITS[str]
       const prefix = unit.prefixes['']
-      return {
-        unit,
-        prefix
-      }
+      return { unit, prefix }
     }
 
     for (const name in UNITS) {
@@ -590,10 +564,7 @@ export const createUnitClass = /* #__PURE__ */ factory(name, dependencies, ({
             : undefined
           if (prefix !== undefined) {
             // store unit, prefix, and value
-            return {
-              unit,
-              prefix
-            }
+            return { unit, prefix }
           }
         }
       }
@@ -618,7 +589,7 @@ export const createUnitClass = /* #__PURE__ */ factory(name, dependencies, ({
    * check if this unit has given base unit
    * If this unit is a derived unit, this will ALWAYS return false, since by definition base units are not derived.
    * @memberof Unit
-   * @param {BASE_UNITS | string | undefined} base
+   * @param {BASE_UNIT | string | undefined} base
    */
   Unit.prototype.hasBase = function (base) {
     if (typeof (base) === 'string') {
@@ -664,13 +635,14 @@ export const createUnitClass = /* #__PURE__ */ factory(name, dependencies, ({
   }
 
   /**
-   * Multiply this unit with another one
+   * Multiply this unit with another one or with a scalar
    * @memberof Unit
    * @param {Unit} other
    * @return {Unit} product of this unit and the other unit
    */
-  Unit.prototype.multiply = function (other) {
+  Unit.prototype.multiply = function (_other) {
     const res = this.clone()
+    const other = isUnit(_other) ? _other : new Unit(_other)
 
     for (let i = 0; i < BASE_DIMENSIONS.length; i++) {
       // Dimensions arrays may be of different lengths. Default to 0.
@@ -688,26 +660,41 @@ export const createUnitClass = /* #__PURE__ */ factory(name, dependencies, ({
 
     // If at least one operand has a value, then the result should also have a value
     if (this.value !== null || other.value !== null) {
-      const valThis = this.value === null ? this._normalize(1) : this.value
-      const valOther = other.value === null ? other._normalize(1) : other.value
+      const valThis = this.value === null ? this._normalize(one(other.value)) : this.value
+      const valOther = other.value === null ? other._normalize(one(this.value)) : other.value
+
       res.value = multiplyScalar(valThis, valOther)
     } else {
       res.value = null
     }
 
-    res.skipAutomaticSimplification = false
+    if (isUnit(_other)) {
+      res.skipAutomaticSimplification = false
+    }
 
     return getNumericIfUnitless(res)
   }
 
   /**
+   * Divide a number by this unit
+   *
+   * @memberof Unit
+   * @param {numeric} numerator
+   * @param {unit} result of dividing numerator by this unit
+   */
+  Unit.prototype.divideInto = function (numerator) {
+    return new Unit(numerator).divide(this)
+  }
+
+  /**
    * Divide this unit by another one
    * @memberof Unit
-   * @param {Unit} other
+   * @param {Unit | numeric} other
    * @return {Unit} result of dividing this unit by the other unit
    */
-  Unit.prototype.divide = function (other) {
+  Unit.prototype.divide = function (_other) {
     const res = this.clone()
+    const other = isUnit(_other) ? _other : new Unit(_other)
 
     for (let i = 0; i < BASE_DIMENSIONS.length; i++) {
       // Dimensions arrays may be of different lengths. Default to 0.
@@ -726,14 +713,16 @@ export const createUnitClass = /* #__PURE__ */ factory(name, dependencies, ({
 
     // If at least one operand has a value, the result should have a value
     if (this.value !== null || other.value !== null) {
-      const valThis = this.value === null ? this._normalize(1) : this.value
-      const valOther = other.value === null ? other._normalize(1) : other.value
+      const valThis = this.value === null ? this._normalize(one(other.value)) : this.value
+      const valOther = other.value === null ? other._normalize(one(this.value)) : other.value
       res.value = divideScalar(valThis, valOther)
     } else {
       res.value = null
     }
 
-    res.skipAutomaticSimplification = false
+    if (isUnit(_other)) {
+      res.skipAutomaticSimplification = false
+    }
 
     return getNumericIfUnitless(res)
   }
@@ -788,16 +777,43 @@ export const createUnitClass = /* #__PURE__ */ factory(name, dependencies, ({
   }
 
   /**
+   * Create a value one with the numeric type of `typeOfValue`.
+   * For example, `one(new BigNumber(3))` returns `BigNumber(1)`
+   * @param {number | Fraction | BigNumber} typeOfValue
+   * @returns {number | Fraction | BigNumber}
+   */
+  function one (typeOfValue) {
+    // TODO: this is a workaround to prevent the following BigNumber conversion error from throwing:
+    //  "TypeError: Cannot implicitly convert a number with >15 significant digits to BigNumber"
+    //  see https://github.com/josdejong/mathjs/issues/3450
+    //      https://github.com/josdejong/mathjs/pull/3375
+    const convert = Unit._getNumberConverter(typeOf(typeOfValue))
+
+    return convert(1)
+  }
+
+  /**
    * Calculate the absolute value of a unit
    * @memberof Unit
    * @param {number | Fraction | BigNumber} x
    * @returns {Unit}      The result: |x|, absolute value of x
    */
   Unit.prototype.abs = function () {
-    // This gives correct, but unexpected, results for units with an offset.
-    // For example, abs(-283.15 degC) = -263.15 degC !!!
     const ret = this.clone()
-    ret.value = ret.value !== null ? abs(ret.value) : null
+    if (ret.value !== null) {
+      if (ret._isDerived() || ret.units.length === 0 || ret.units[0].unit.offset === 0) {
+        ret.value = abs(ret.value)
+      } else {
+        // To give the correct, but unexpected, results for units with an offset.
+        // For example, abs(-283.15 degC) = -263.15 degC !!!
+        // We must take the offset into consideration here
+        const convert = ret._numberConverter() // convert to Fraction or BigNumber if needed
+        const unitValue = convert(ret.units[0].unit.value)
+        const nominalOffset = convert(ret.units[0].unit.offset)
+        const unitOffset = multiplyScalar(unitValue, nominalOffset)
+        ret.value = subtractScalar(abs(addScalar(ret.value, unitOffset)), unitOffset)
+      }
+    }
 
     for (const i in ret.units) {
       if (ret.units[i].unit.name === 'VA' || ret.units[i].unit.name === 'VAR') {
@@ -815,37 +831,44 @@ export const createUnitClass = /* #__PURE__ */ factory(name, dependencies, ({
    * @returns {Unit} Returns a clone of the unit with a fixed prefix and unit.
    */
   Unit.prototype.to = function (valuelessUnit) {
-    let other
     const value = this.value === null ? this._normalize(1) : this.value
+    let other
     if (typeof valuelessUnit === 'string') {
-      // other = new Unit(null, valuelessUnit)
       other = Unit.parse(valuelessUnit)
-      if (!this.equalBase(other)) {
-        throw new Error(`Units do not match ('${other.toString()}' != '${this.toString()}')`)
-      }
-      if (other.value !== null) {
-        throw new Error('Cannot convert to a unit with a value')
-      }
-
-      other.value = clone(value)
-      other.fixPrefix = true
-      other.skipAutomaticSimplification = true
-      return other
     } else if (isUnit(valuelessUnit)) {
-      if (!this.equalBase(valuelessUnit)) {
-        throw new Error(`Units do not match ('${valuelessUnit.toString()}' != '${this.toString()}')`)
-      }
-      if (valuelessUnit.value !== null) {
-        throw new Error('Cannot convert to a unit with a value')
-      }
       other = valuelessUnit.clone()
-      other.value = clone(value)
-      other.fixPrefix = true
-      other.skipAutomaticSimplification = true
-      return other
     } else {
       throw new Error('String or Unit expected as parameter')
     }
+
+    if (!this.equalBase(other)) {
+      throw new Error(`Units do not match ('${other.toString()}' != '${this.toString()}')`)
+    }
+    if (other.value !== null) {
+      throw new Error('Cannot convert to a unit with a value')
+    }
+
+    if (this.value === null || this._isDerived() ||
+        this.units.length === 0 || other.units.length === 0 ||
+        this.units[0].unit.offset === other.units[0].unit.offset) {
+      other.value = clone(value)
+    } else {
+      /* Need to adjust value by difference in offset to convert */
+      const convert = Unit._getNumberConverter(typeOf(value)) // convert to Fraction or BigNumber if needed
+
+      const thisUnitValue = this.units[0].unit.value
+      const thisNominalOffset = this.units[0].unit.offset
+      const thisUnitOffset = multiplyScalar(thisUnitValue, thisNominalOffset)
+
+      const otherUnitValue = other.units[0].unit.value
+      const otherNominalOffset = other.units[0].unit.offset
+      const otherUnitOffset = multiplyScalar(otherUnitValue, otherNominalOffset)
+
+      other.value = addScalar(value, convert(subtractScalar(thisUnitOffset, otherUnitOffset)))
+    }
+    other.fixPrefix = true
+    other.skipAutomaticSimplification = true
+    return other
   }
 
   /**
@@ -894,14 +917,15 @@ export const createUnitClass = /* #__PURE__ */ factory(name, dependencies, ({
    * Get a JSON representation of the unit
    * @memberof Unit
    * @returns {Object} Returns a JSON object structured as:
-   *                   `{"mathjs": "Unit", "value": 2, "unit": "cm", "fixPrefix": false}`
+   *                   `{"mathjs": "Unit", "value": 2, "unit": "cm", "fixPrefix": false, "skipSimp": true}`
    */
   Unit.prototype.toJSON = function () {
     return {
       mathjs: 'Unit',
       value: this._denormalize(this.value),
-      unit: this.formatUnits(),
-      fixPrefix: this.fixPrefix
+      unit: this.units.length > 0 ? this.formatUnits() : null,
+      fixPrefix: this.fixPrefix,
+      skipSimp: this.skipAutomaticSimplification
     }
   }
 
@@ -913,8 +937,9 @@ export const createUnitClass = /* #__PURE__ */ factory(name, dependencies, ({
    * @return {Unit}
    */
   Unit.fromJSON = function (json) {
-    const unit = new Unit(json.value, json.unit)
-    unit.fixPrefix = json.fixPrefix || false
+    const unit = new Unit(json.value, json.unit ?? undefined)
+    unit.fixPrefix = json.fixPrefix ?? fixPrefixDefault
+    unit.skipAutomaticSimplification = json.skipSimp ?? skipAutomaticSimplificationDefault
     return unit
   }
 
@@ -964,7 +989,7 @@ export const createUnitClass = /* #__PURE__ */ factory(name, dependencies, ({
       } else {
         // Multiple units or units with powers are formatted like this:
         // 5 (kg m^2) / (s^3 mol)
-        // Build an representation from the base units of the current unit system
+        // Build a representation from the base units of the current unit system
         let missingBaseDim = false
         for (let i = 0; i < BASE_DIMENSIONS.length; i++) {
           const baseDim = BASE_DIMENSIONS[i]
@@ -1002,7 +1027,7 @@ export const createUnitClass = /* #__PURE__ */ factory(name, dependencies, ({
 
     // Multiple units or units with powers are formatted like this:
     // 5 (kg m^2) / (s^3 mol)
-    // Build an representation from the base units of the SI unit system
+    // Build a representation from the base units of the SI unit system
     for (let i = 0; i < BASE_DIMENSIONS.length; i++) {
       const baseDim = BASE_DIMENSIONS[i]
       if (Math.abs(ret.dimensions[i] || 0) > 1e-12) {
@@ -1024,6 +1049,10 @@ export const createUnitClass = /* #__PURE__ */ factory(name, dependencies, ({
     ret.fixPrefix = true
     ret.skipAutomaticSimplification = true
 
+    if (this.value !== null) {
+      ret.value = null
+      return this.to(ret)
+    }
     return ret
   }
 
@@ -1069,7 +1098,7 @@ export const createUnitClass = /* #__PURE__ */ factory(name, dependencies, ({
     strNum = strNum.substr(1)
     strDen = strDen.substr(1)
 
-    // Add parans for better copy/paste back into evaluate, for example, or for better pretty print formatting
+    // Add parentheses for better copy/paste back into evaluate, for example, or for better pretty print formatting
     if (nNum > 1 && nDen > 0) {
       strNum = '(' + strNum + ')'
     }
@@ -1087,6 +1116,54 @@ export const createUnitClass = /* #__PURE__ */ factory(name, dependencies, ({
   }
 
   /**
+   * Get a unit, with optional formatting options.
+   * @memberof Unit
+   * @param {string[] | Unit[]} [units]  Array of units strings or valueLess Unit objects in wich choose the best one
+   * @param {Object} [options]  Options for parsing the unit. See parseUnit for details.
+   *
+   * @return {Unit} Returns a new Unit with the given value and unit.
+   */
+  Unit.prototype.toBest = function (unitList = [], options = {}) {
+    if (unitList && !Array.isArray(unitList)) {
+      throw new Error('Invalid unit type. Expected string or Unit.')
+    }
+
+    const startPrefixes = this.units[0].unit.prefixes
+    if (unitList && unitList.length > 0) {
+      const unitObjects = unitList.map(u => {
+        let unit = null
+        if (typeof u === 'string') {
+          unit = Unit.parse(u)
+          if (!unit) {
+            throw new Error('Invalid unit type. Expected compatible string or Unit.')
+          }
+        } else if (!isUnit(u)) {
+          throw new Error('Invalid unit type. Expected compatible string or Unit.')
+        }
+        if (unit === null) {
+          unit = u.clone()
+        }
+        try {
+          this.to(unit.formatUnits())
+          return unit
+        } catch (e) {
+          throw new Error('Invalid unit type. Expected compatible string or Unit.')
+        }
+      })
+      const prefixes = unitObjects.map(el => el.units[0].prefix)
+      this.units[0].unit.prefixes = prefixes.reduce((acc, prefix) => {
+        acc[prefix.name] = prefix
+        return acc
+      }, {})
+      this.units[0].prefix = prefixes[0]
+    }
+
+    const result = formatBest(this, options).simp
+    this.units[0].unit.prefixes = startPrefixes
+    result.fixPrefix = true
+    return result
+  }
+  /**
    * Get a string representation of the Unit, with optional formatting options.
    * @memberof Unit
    * @param {Object | number | Function} [options]  Formatting options. See
@@ -1096,45 +1173,8 @@ export const createUnitClass = /* #__PURE__ */ factory(name, dependencies, ({
    * @return {string}
    */
   Unit.prototype.format = function (options) {
-    // Simplfy the unit list, unless it is valueless or was created directly in the
-    // constructor or as the result of to or toSI
-    const simp = this.skipAutomaticSimplification || this.value === null
-      ? this.clone()
-      : this.simplify()
-
-    // Apply some custom logic for handling VA and VAR. The goal is to express the value of the unit as a real value, if possible. Otherwise, use a real-valued unit instead of a complex-valued one.
-    let isImaginary = false
-    if (typeof (simp.value) !== 'undefined' && simp.value !== null && isComplex(simp.value)) {
-      // TODO: Make this better, for example, use relative magnitude of re and im rather than absolute
-      isImaginary = Math.abs(simp.value.re) < 1e-14
-    }
-
-    for (const i in simp.units) {
-      if (hasOwnProperty(simp.units, i)) {
-        if (simp.units[i].unit) {
-          if (simp.units[i].unit.name === 'VA' && isImaginary) {
-            simp.units[i].unit = UNITS.VAR
-          } else if (simp.units[i].unit.name === 'VAR' && !isImaginary) {
-            simp.units[i].unit = UNITS.VA
-          }
-        }
-      }
-    }
-
-    // Now apply the best prefix
-    // Units must have only one unit and not have the fixPrefix flag set
-    if (simp.units.length === 1 && !simp.fixPrefix) {
-      // Units must have integer powers, otherwise the prefix will change the
-      // outputted value by not-an-integer-power-of-ten
-      if (Math.abs(simp.units[0].power - Math.round(simp.units[0].power)) < 1e-14) {
-        // Apply the best prefix
-        simp.units[0].prefix = simp._bestPrefix()
-      }
-    }
-
-    const value = simp._denormalize(simp.value)
-    let str = (simp.value !== null) ? format(value, options || {}) : ''
-    const unitStr = simp.formatUnits()
+    const { simp, valueStr, unitStr } = formatBest(this, options)
+    let str = valueStr
     if (simp.value && isComplex(simp.value)) {
       str = '(' + str + ')' // Surround complex values with ( ) to enable better parsing
     }
@@ -1147,12 +1187,80 @@ export const createUnitClass = /* #__PURE__ */ factory(name, dependencies, ({
   }
 
   /**
+ * Helper function to normalize a unit for conversion and formatting
+ * @param {Unit} unit The unit to be normalized
+ * @return {Object} Object with normalized unit and value
+ * @private
+ */
+  function formatBest (unit, options = {}) {
+    // Simplify the unit list, unless it is valueless or was created directly in the
+    // constructor or as the result of to or toSI
+    const simp = unit.skipAutomaticSimplification || unit.value === null
+      ? unit.clone()
+      : unit.simplify()
+
+    // Apply some custom logic for handling VA and VAR. The goal is to express the value of the unit as a real value, if possible. Otherwise, use a real-valued unit instead of a complex-valued one.
+    handleVAandVARUnits(simp)
+    // Now apply the best prefix
+    // Units must have only one unit and not have the fixPrefix flag set
+    applyBestPrefixIfNeeded(simp, options.offset)
+
+    const value = simp._denormalize(simp.value)
+    const valueStr = (simp.value !== null) ? format(value, options || {}) : ''
+    const unitStr = simp.formatUnits()
+    return {
+      simp,
+      valueStr,
+      unitStr
+    }
+  }
+
+  /**
+   * Helper to handle VA and VAR units
+   * @param {Unit} simp The unit to be normalized
+   */
+  function handleVAandVARUnits (simp) {
+    let isImaginary = false
+    if (typeof (simp.value) !== 'undefined' && simp.value !== null && isComplex(simp.value)) {
+      // TODO: Make this better, for example, use relative magnitude of re and im rather than absolute
+      isImaginary = Math.abs(simp.value.re) < 1e-14
+    }
+    for (const i in simp.units) {
+      if (hasOwnProperty(simp.units, i)) {
+        if (simp.units[i].unit) {
+          if (simp.units[i].unit.name === 'VA' && isImaginary) {
+            simp.units[i].unit = UNITS.VAR
+          } else if (simp.units[i].unit.name === 'VAR' && !isImaginary) {
+            simp.units[i].unit = UNITS.VA
+          }
+        }
+      }
+    }
+  }
+
+  /**
+   * Helper to apply the best prefix if needed
+   * @param {Unit} simp The unit to be normalized
+   */
+  function applyBestPrefixIfNeeded (simp, offset) {
+    if (simp.units.length === 1 && !simp.fixPrefix) {
+      // Units must have integer powers, otherwise the prefix will change the
+      // outputted value by not-an-integer-power-of-ten
+      if (Math.abs(simp.units[0].power - Math.round(simp.units[0].power)) < 1e-14) {
+        // Apply the best prefix
+        simp.units[0].prefix = simp._bestPrefix(offset)
+      }
+    }
+  }
+
+  /**
    * Calculate the best prefix using current value.
    * @memberof Unit
    * @returns {Object} prefix
+   * @param {number} [offset]  Optional offset for the best prefix calculation (default 1.2)
    * @private
    */
-  Unit.prototype._bestPrefix = function () {
+  Unit.prototype._bestPrefix = function (offset = 1.2) {
     if (this.units.length !== 1) {
       throw new Error('Can only compute the best prefix for single units with integer powers, like kg, s^2, N^-1, and so forth!')
     }
@@ -1175,7 +1283,7 @@ export const createUnitClass = /* #__PURE__ */ factory(name, dependencies, ({
       return bestPrefix
     }
     const power = this.units[0].power
-    let bestDiff = Math.log(absValue / Math.pow(bestPrefix.value * absUnitValue, power)) / Math.LN10 - 1.2
+    let bestDiff = Math.log(absValue / Math.pow(bestPrefix.value * absUnitValue, power)) / Math.LN10 - offset
     if (bestDiff > -2.200001 && bestDiff < 1.800001) return bestPrefix // Allow the original prefix
     bestDiff = Math.abs(bestDiff)
     const prefixes = this.units[0].unit.prefixes
@@ -1184,8 +1292,7 @@ export const createUnitClass = /* #__PURE__ */ factory(name, dependencies, ({
         const prefix = prefixes[p]
         if (prefix.scientific) {
           const diff = Math.abs(
-            Math.log(absValue / Math.pow(prefix.value * absUnitValue, power)) / Math.LN10 - 1.2)
-
+            Math.log(absValue / Math.pow(prefix.value * absUnitValue, power)) / Math.LN10 - offset)
           if (diff < bestDiff ||
             (diff === bestDiff && prefix.name.length < bestPrefix.name.length)) {
             // choose the prefix with the smallest diff, or if equal, choose the one
@@ -1196,7 +1303,6 @@ export const createUnitClass = /* #__PURE__ */ factory(name, dependencies, ({
         }
       }
     }
-
     return bestPrefix
   }
 
@@ -1237,7 +1343,7 @@ export const createUnitClass = /* #__PURE__ */ factory(name, dependencies, ({
 
       const y = new Unit(xFixed, parts[i].toString())
       ret.push(y)
-      x = subtract(x, y)
+      x = subtractScalar(x, y)
     }
 
     // This little bit fixes a bug where the remainder should be 0 but is a little bit off.
@@ -1274,6 +1380,8 @@ export const createUnitClass = /* #__PURE__ */ factory(name, dependencies, ({
       E: { name: 'E', value: 1e18, scientific: true },
       Z: { name: 'Z', value: 1e21, scientific: true },
       Y: { name: 'Y', value: 1e24, scientific: true },
+      R: { name: 'R', value: 1e27, scientific: true },
+      Q: { name: 'Q', value: 1e30, scientific: true },
 
       d: { name: 'd', value: 1e-1, scientific: false },
       c: { name: 'c', value: 1e-2, scientific: false },
@@ -1284,7 +1392,9 @@ export const createUnitClass = /* #__PURE__ */ factory(name, dependencies, ({
       f: { name: 'f', value: 1e-15, scientific: true },
       a: { name: 'a', value: 1e-18, scientific: true },
       z: { name: 'z', value: 1e-21, scientific: true },
-      y: { name: 'y', value: 1e-24, scientific: true }
+      y: { name: 'y', value: 1e-24, scientific: true },
+      r: { name: 'r', value: 1e-27, scientific: true },
+      q: { name: 'q', value: 1e-30, scientific: true }
     },
     LONG: {
       '': { name: '', value: 1, scientific: true },
@@ -1299,6 +1409,8 @@ export const createUnitClass = /* #__PURE__ */ factory(name, dependencies, ({
       exa: { name: 'exa', value: 1e18, scientific: true },
       zetta: { name: 'zetta', value: 1e21, scientific: true },
       yotta: { name: 'yotta', value: 1e24, scientific: true },
+      ronna: { name: 'ronna', value: 1e27, scientific: true },
+      quetta: { name: 'quetta', value: 1e30, scientific: true },
 
       deci: { name: 'deci', value: 1e-1, scientific: false },
       centi: { name: 'centi', value: 1e-2, scientific: false },
@@ -1309,7 +1421,9 @@ export const createUnitClass = /* #__PURE__ */ factory(name, dependencies, ({
       femto: { name: 'femto', value: 1e-15, scientific: true },
       atto: { name: 'atto', value: 1e-18, scientific: true },
       zepto: { name: 'zepto', value: 1e-21, scientific: true },
-      yocto: { name: 'yocto', value: 1e-24, scientific: true }
+      yocto: { name: 'yocto', value: 1e-24, scientific: true },
+      ronto: { name: 'ronto', value: 1e-27, scientific: true },
+      quecto: { name: 'quecto', value: 1e-30, scientific: true }
     },
     SQUARED: {
       '': { name: '', value: 1, scientific: true },
@@ -1324,6 +1438,8 @@ export const createUnitClass = /* #__PURE__ */ factory(name, dependencies, ({
       E: { name: 'E', value: 1e36, scientific: true },
       Z: { name: 'Z', value: 1e42, scientific: true },
       Y: { name: 'Y', value: 1e48, scientific: true },
+      R: { name: 'R', value: 1e54, scientific: true },
+      Q: { name: 'Q', value: 1e60, scientific: true },
 
       d: { name: 'd', value: 1e-2, scientific: false },
       c: { name: 'c', value: 1e-4, scientific: false },
@@ -1334,7 +1450,9 @@ export const createUnitClass = /* #__PURE__ */ factory(name, dependencies, ({
       f: { name: 'f', value: 1e-30, scientific: true },
       a: { name: 'a', value: 1e-36, scientific: true },
       z: { name: 'z', value: 1e-42, scientific: true },
-      y: { name: 'y', value: 1e-48, scientific: true }
+      y: { name: 'y', value: 1e-48, scientific: true },
+      r: { name: 'r', value: 1e-54, scientific: true },
+      q: { name: 'q', value: 1e-60, scientific: true }
     },
     CUBIC: {
       '': { name: '', value: 1, scientific: true },
@@ -1349,6 +1467,8 @@ export const createUnitClass = /* #__PURE__ */ factory(name, dependencies, ({
       E: { name: 'E', value: 1e54, scientific: true },
       Z: { name: 'Z', value: 1e63, scientific: true },
       Y: { name: 'Y', value: 1e72, scientific: true },
+      R: { name: 'R', value: 1e81, scientific: true },
+      Q: { name: 'Q', value: 1e90, scientific: true },
 
       d: { name: 'd', value: 1e-3, scientific: false },
       c: { name: 'c', value: 1e-6, scientific: false },
@@ -1359,7 +1479,9 @@ export const createUnitClass = /* #__PURE__ */ factory(name, dependencies, ({
       f: { name: 'f', value: 1e-45, scientific: true },
       a: { name: 'a', value: 1e-54, scientific: true },
       z: { name: 'z', value: 1e-63, scientific: true },
-      y: { name: 'y', value: 1e-72, scientific: true }
+      y: { name: 'y', value: 1e-72, scientific: true },
+      r: { name: 'r', value: 1e-81, scientific: true },
+      q: { name: 'q', value: 1e-90, scientific: true }
     },
     BINARY_SHORT_SI: {
       '': { name: '', value: 1, scientific: true },
@@ -1811,30 +1933,30 @@ export const createUnitClass = /* #__PURE__ */ factory(name, dependencies, ({
       name: 'minim',
       base: BASE_UNITS.VOLUME,
       prefixes: PREFIXES.NONE,
-      value: 0.00000006161152,
+      value: 0.000000061611519921875,
       offset: 0
-    }, // 0.06161152 mL
+    }, // 1/61440 gallons
     fluiddram: {
       name: 'fluiddram',
       base: BASE_UNITS.VOLUME,
       prefixes: PREFIXES.NONE,
-      value: 0.0000036966911,
+      value: 0.0000036966911953125,
       offset: 0
-    }, // 3.696691 mL
+    }, // 1/1024 gallons
     fluidounce: {
       name: 'fluidounce',
       base: BASE_UNITS.VOLUME,
       prefixes: PREFIXES.NONE,
-      value: 0.00002957353,
+      value: 0.0000295735295625,
       offset: 0
-    }, // 29.57353 mL
+    }, // 1/128 gallons
     gill: {
       name: 'gill',
       base: BASE_UNITS.VOLUME,
       prefixes: PREFIXES.NONE,
-      value: 0.0001182941,
+      value: 0.00011829411825,
       offset: 0
-    }, // 118.2941 mL
+    }, // 1/32 gallons
     cc: {
       name: 'cc',
       base: BASE_UNITS.VOLUME,
@@ -1846,117 +1968,51 @@ export const createUnitClass = /* #__PURE__ */ factory(name, dependencies, ({
       name: 'cup',
       base: BASE_UNITS.VOLUME,
       prefixes: PREFIXES.NONE,
-      value: 0.0002365882,
+      value: 0.0002365882365,
       offset: 0
-    }, // 236.5882 mL
+    }, // 1/16 gallons
     pint: {
       name: 'pint',
       base: BASE_UNITS.VOLUME,
       prefixes: PREFIXES.NONE,
-      value: 0.0004731765,
+      value: 0.000473176473,
       offset: 0
-    }, // 473.1765 mL
+    }, // 1/8 gallons
     quart: {
       name: 'quart',
       base: BASE_UNITS.VOLUME,
       prefixes: PREFIXES.NONE,
-      value: 0.0009463529,
+      value: 0.000946352946,
       offset: 0
-    }, // 946.3529 mL
+    }, // 1/4 gallons
     gallon: {
       name: 'gallon',
       base: BASE_UNITS.VOLUME,
       prefixes: PREFIXES.NONE,
-      value: 0.003785412,
+      value: 0.003785411784,
       offset: 0
-    }, // 3.785412 L
+    }, // 3.785411784 L
     beerbarrel: {
       name: 'beerbarrel',
       base: BASE_UNITS.VOLUME,
       prefixes: PREFIXES.NONE,
-      value: 0.1173478,
+      value: 0.117347765304,
       offset: 0
-    }, // 117.3478 L
+    }, // 31 gallons
     oilbarrel: {
       name: 'oilbarrel',
       base: BASE_UNITS.VOLUME,
       prefixes: PREFIXES.NONE,
-      value: 0.1589873,
+      value: 0.158987294928,
       offset: 0
-    }, // 158.9873 L
+    }, // 42 gallons
     hogshead: {
       name: 'hogshead',
       base: BASE_UNITS.VOLUME,
       prefixes: PREFIXES.NONE,
-      value: 0.2384810,
+      value: 0.238480942392,
       offset: 0
-    }, // 238.4810 L
-
-    // {name: 'min', base: BASE_UNITS.VOLUME, prefixes: PREFIXES.NONE, value: 0.00000006161152, offset: 0}, // 0.06161152 mL // min is already in use as minute
-    fldr: {
-      name: 'fldr',
-      base: BASE_UNITS.VOLUME,
-      prefixes: PREFIXES.NONE,
-      value: 0.0000036966911,
-      offset: 0
-    }, // 3.696691 mL
-    floz: {
-      name: 'floz',
-      base: BASE_UNITS.VOLUME,
-      prefixes: PREFIXES.NONE,
-      value: 0.00002957353,
-      offset: 0
-    }, // 29.57353 mL
-    gi: {
-      name: 'gi',
-      base: BASE_UNITS.VOLUME,
-      prefixes: PREFIXES.NONE,
-      value: 0.0001182941,
-      offset: 0
-    }, // 118.2941 mL
-    cp: {
-      name: 'cp',
-      base: BASE_UNITS.VOLUME,
-      prefixes: PREFIXES.NONE,
-      value: 0.0002365882,
-      offset: 0
-    }, // 236.5882 mL
-    pt: {
-      name: 'pt',
-      base: BASE_UNITS.VOLUME,
-      prefixes: PREFIXES.NONE,
-      value: 0.0004731765,
-      offset: 0
-    }, // 473.1765 mL
-    qt: {
-      name: 'qt',
-      base: BASE_UNITS.VOLUME,
-      prefixes: PREFIXES.NONE,
-      value: 0.0009463529,
-      offset: 0
-    }, // 946.3529 mL
-    gal: {
-      name: 'gal',
-      base: BASE_UNITS.VOLUME,
-      prefixes: PREFIXES.NONE,
-      value: 0.003785412,
-      offset: 0
-    }, // 3.785412 L
-    bbl: {
-      name: 'bbl',
-      base: BASE_UNITS.VOLUME,
-      prefixes: PREFIXES.NONE,
-      value: 0.1173478,
-      offset: 0
-    }, // 117.3478 L
-    obl: {
-      name: 'obl',
-      base: BASE_UNITS.VOLUME,
-      prefixes: PREFIXES.NONE,
-      value: 0.1589873,
-      offset: 0
-    }, // 158.9873 L
-    // {name: 'hogshead', base: BASE_UNITS.VOLUME, prefixes: PREFIXES.NONE, value: 0.2384810, offset: 0}, // 238.4810 L // TODO: hh?
+    }, // 63 gallons
 
     // Mass
     g: {
@@ -2288,62 +2344,62 @@ export const createUnitClass = /* #__PURE__ */ factory(name, dependencies, ({
 
     // Temperature
     // K(C) = °C + 273.15
-    // K(F) = (°F + 459.67) / 1.8
-    // K(R) = °R / 1.8
+    // K(F) = (°F + 459.67) * (5 / 9)
+    // K(R) = °R * (5 / 9)
     K: {
       name: 'K',
       base: BASE_UNITS.TEMPERATURE,
-      prefixes: PREFIXES.NONE,
+      prefixes: PREFIXES.SHORT,
       value: 1,
       offset: 0
     },
     degC: {
       name: 'degC',
       base: BASE_UNITS.TEMPERATURE,
-      prefixes: PREFIXES.NONE,
+      prefixes: PREFIXES.SHORT,
       value: 1,
       offset: 273.15
     },
     degF: {
       name: 'degF',
       base: BASE_UNITS.TEMPERATURE,
-      prefixes: PREFIXES.NONE,
-      value: 1 / 1.8,
+      prefixes: PREFIXES.SHORT,
+      value: new Fraction(5, 9),
       offset: 459.67
     },
     degR: {
       name: 'degR',
       base: BASE_UNITS.TEMPERATURE,
-      prefixes: PREFIXES.NONE,
-      value: 1 / 1.8,
+      prefixes: PREFIXES.SHORT,
+      value: new Fraction(5, 9),
       offset: 0
     },
     kelvin: {
       name: 'kelvin',
       base: BASE_UNITS.TEMPERATURE,
-      prefixes: PREFIXES.NONE,
+      prefixes: PREFIXES.LONG,
       value: 1,
       offset: 0
     },
     celsius: {
       name: 'celsius',
       base: BASE_UNITS.TEMPERATURE,
-      prefixes: PREFIXES.NONE,
+      prefixes: PREFIXES.LONG,
       value: 1,
       offset: 273.15
     },
     fahrenheit: {
       name: 'fahrenheit',
       base: BASE_UNITS.TEMPERATURE,
-      prefixes: PREFIXES.NONE,
-      value: 1 / 1.8,
+      prefixes: PREFIXES.LONG,
+      value: new Fraction(5, 9),
       offset: 459.67
     },
     rankine: {
       name: 'rankine',
       base: BASE_UNITS.TEMPERATURE,
-      prefixes: PREFIXES.NONE,
-      value: 1 / 1.8,
+      prefixes: PREFIXES.LONG,
+      value: new Fraction(5, 9),
       offset: 0
     },
 
@@ -2451,14 +2507,14 @@ export const createUnitClass = /* #__PURE__ */ factory(name, dependencies, ({
     joule: {
       name: 'joule',
       base: BASE_UNITS.ENERGY,
-      prefixes: PREFIXES.SHORT,
+      prefixes: PREFIXES.LONG,
       value: 1,
       offset: 0
     },
     erg: {
       name: 'erg',
       base: BASE_UNITS.ENERGY,
-      prefixes: PREFIXES.NONE,
+      prefixes: PREFIXES.SHORTLONG, // Both kiloerg and kerg are acceptable
       value: 1e-7,
       offset: 0
     },
@@ -2604,6 +2660,13 @@ export const createUnitClass = /* #__PURE__ */ factory(name, dependencies, ({
       value: 1,
       offset: 0
     },
+    Ah: {
+      name: 'Ah',
+      base: BASE_UNITS.ELECTRIC_CHARGE,
+      prefixes: PREFIXES.SHORT,
+      value: 3600,
+      offset: 0
+    },
     // Electric capacitance
     farad: {
       name: 'farad',
@@ -2745,6 +2808,7 @@ export const createUnitClass = /* #__PURE__ */ factory(name, dependencies, ({
   }
 
   // aliases (formerly plurals)
+  // note that ALIASES is only used at creation to create more entries in UNITS by copying the aliased units
   const ALIASES = {
     meters: 'meter',
     inches: 'inch',
@@ -2763,14 +2827,23 @@ export const createUnitClass = /* #__PURE__ */ factory(name, dependencies, ({
     teaspoons: 'teaspoon',
     tablespoons: 'tablespoon',
     minims: 'minim',
+    fldr: 'fluiddram',
     fluiddrams: 'fluiddram',
+    floz: 'fluidounce',
     fluidounces: 'fluidounce',
+    gi: 'gill',
     gills: 'gill',
+    cp: 'cup',
     cups: 'cup',
+    pt: 'pint',
     pints: 'pint',
+    qt: 'quart',
     quarts: 'quart',
+    gal: 'gallon',
     gallons: 'gallon',
+    bbl: 'beerbarrel',
     beerbarrels: 'beerbarrel',
+    obl: 'oilbarrel',
     oilbarrels: 'oilbarrel',
     hogsheads: 'hogshead',
     gtts: 'gtt',
@@ -2832,6 +2905,8 @@ export const createUnitClass = /* #__PURE__ */ factory(name, dependencies, ({
     joules: 'joule',
 
     amperes: 'ampere',
+    amps: 'ampere',
+    amp: 'ampere',
     coulombs: 'coulomb',
     volts: 'volt',
     ohms: 'ohm',
@@ -2950,6 +3025,7 @@ export const createUnitClass = /* #__PURE__ */ factory(name, dependencies, ({
 
   /**
    * Set a unit system for formatting derived units.
+   * @memberof Unit
    * @param {string} [name] The name of the unit system.
    */
   Unit.setUnitSystem = function (name) {
@@ -2962,6 +3038,7 @@ export const createUnitClass = /* #__PURE__ */ factory(name, dependencies, ({
 
   /**
    * Return the current unit system.
+   * @memberof Unit
    * @return {string} The current unit system.
    */
   Unit.getUnitSystem = function () {
@@ -2980,6 +3057,7 @@ export const createUnitClass = /* #__PURE__ */ factory(name, dependencies, ({
    */
   Unit.typeConverters = {
     BigNumber: function (x) {
+      if (x?.isFraction) return new BigNumber(String(x.n)).div(String(x.d)).times(String(x.s))
       return new BigNumber(x + '') // stringify to prevent constructor error
     },
 
@@ -2992,8 +3070,24 @@ export const createUnitClass = /* #__PURE__ */ factory(name, dependencies, ({
     },
 
     number: function (x) {
+      if (x?.isFraction) return number(x)
       return x
     }
+  }
+
+  /**
+   * Retrieve the right converter function corresponding with this unit's
+   * value
+   *
+   * @memberof Unit
+   * @return {Function}
+   */
+  Unit.prototype._numberConverter = function () {
+    const convert = Unit.typeConverters[this.valueType()]
+    if (convert) {
+      return convert
+    }
+    throw new TypeError('Unsupported Unit value type "' + this.valueType() + '"')
   }
 
   /**
@@ -3038,7 +3132,9 @@ export const createUnitClass = /* #__PURE__ */ factory(name, dependencies, ({
   /**
    * Checks if a character is a valid latin letter (upper or lower case).
    * Note that this function can be overridden, for example to allow support of other alphabets.
+   * @memberof Unit
    * @param {string} c Tested character
+   * @return {boolean} true if the character is a latin letter
    */
   Unit.isValidAlpha = function isValidAlpha (c) {
     return /^[a-zA-Z]$/.test(c)
@@ -3058,20 +3154,24 @@ export const createUnitClass = /* #__PURE__ */ factory(name, dependencies, ({
   /**
    * Wrapper around createUnitSingle.
    * Example:
-   *  createUnit({
-   *    foo: { },
-   *    bar: {
-   *      definition: 'kg/foo',
-   *      aliases: ['ba', 'barr', 'bars'],
-   *      offset: 200
-   *    },
-   *    baz: '4 bar'
-   *  },
-   *  {
-   *    override: true
-   *  })
+   *  createUnit( {
+   *     foo: {
+   *       prefixes: 'long',
+   *       baseName: 'essence-of-foo'
+   *     },
+   *     bar: '40 foo',
+   *     baz: {
+   *       definition: '1 bar/hour',
+   *       prefixes: 'long'
+   *     }
+   *   },
+   *   {
+   *     override: true
+   *   })
+   * @memberof Unit
    * @param {object} obj      Object map. Each key becomes a unit which is defined by its value.
    * @param {object} options
+   * @return {Unit} the last created unit
    */
   Unit.createUnit = function (obj, options) {
     if (typeof (obj) !== 'object') {
@@ -3106,13 +3206,13 @@ export const createUnitClass = /* #__PURE__ */ factory(name, dependencies, ({
    * Create a user-defined unit and register it with the Unit type.
    * Example:
    *  createUnitSingle('knot', '0.514444444 m/s')
-   *  createUnitSingle('acre', new Unit(43560, 'ft^2'))
    *
+   * @memberof Unit
    * @param {string} name      The name of the new unit. Must be unique. Example: 'knot'
-   * @param {string, Unit, Object} definition      Definition of the unit in terms
+   * @param {string | Unit | object} definition      Definition of the unit in terms
    * of existing units. For example, '0.514444444 m / s'. Can be a Unit, a string,
    * or an Object. If an Object, may have the following properties:
-   *   - definition {string|Unit} The definition of this unit.
+   *   - definition {string | Unit} The definition of this unit.
    *   - prefixes {string} "none", "short", "long", "binary_short", or "binary_long".
    *     The default is "none".
    *   - aliases {Array} Array of strings. Example: ['knots', 'kt', 'kts']
@@ -3123,14 +3223,9 @@ export const createUnitClass = /* #__PURE__ */ factory(name, dependencies, ({
    *     base unit, the name of the newly create base unit. Otherwise, this property
    *     has no effect.
    *
-   * @param {Object} options   (optional) An object containing any of the following
-   * properties:
-   *   - override {boolean} Whether this unit should be allowed to override existing
-   *     units.
-   *
    * @return {Unit}
    */
-  Unit.createUnitSingle = function (name, obj, options) {
+  Unit.createUnitSingle = function (name, obj) {
     if (typeof (obj) === 'undefined' || obj === null) {
       obj = {}
     }
@@ -3223,11 +3318,11 @@ export const createUnitClass = /* #__PURE__ */ factory(name, dependencies, ({
       BASE_UNITS[baseName] = newBaseUnit
 
       newUnit = {
-        name: name,
+        name,
         value: 1,
         dimensions: BASE_UNITS[baseName].dimensions.slice(0),
-        prefixes: prefixes,
-        offset: offset,
+        prefixes,
+        offset,
         base: BASE_UNITS[baseName]
       }
 
@@ -3237,11 +3332,11 @@ export const createUnitClass = /* #__PURE__ */ factory(name, dependencies, ({
       }
     } else {
       newUnit = {
-        name: name,
+        name,
         value: defUnit.value,
         dimensions: defUnit.dimensions.slice(0),
-        prefixes: prefixes,
-        offset: offset
+        prefixes,
+        offset
       }
 
       // Create a new base if no matching base exists
@@ -3291,8 +3386,8 @@ export const createUnitClass = /* #__PURE__ */ factory(name, dependencies, ({
       alias.name = aliasName
       Unit.UNITS[aliasName] = alias
     }
-    // delete the memoization cache, since adding a new unit to the array
-    // invalidates all old results
+
+    // delete the memoization cache because we created a new unit
     delete _findUnit.cache
 
     return new Unit(null, name)
@@ -3300,6 +3395,9 @@ export const createUnitClass = /* #__PURE__ */ factory(name, dependencies, ({
 
   Unit.deleteUnit = function (name) {
     delete Unit.UNITS[name]
+
+    // delete the memoization cache because we deleted a unit
+    delete _findUnit.cache
   }
 
   // expose arrays with prefixes, dimensions, units, systems
